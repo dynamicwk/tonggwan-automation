@@ -21,19 +21,17 @@ logo_filename = "삼륭물산한글로고.png"
 
 if os.path.exists(logo_filename):
     bin_str = get_base64_of_bin_file(logo_filename)
-    # 투명도(opacity)를 은은하게 조절하여 본문 글씨 가독성을 보호하면서 화면 중앙에 크게 배치
     page_bg_img = f'''
     <style>
     .stApp {{
         background-image: url("data:image/png;base64,{bin_str}");
-        background-size: 55%; /* 화면 대비 워터마크 크기 */
+        background-size: 55%; 
         background-repeat: no-repeat;
         background-position: center center;
         background-attachment: fixed;
     }}
-    /* 본문 데이터 박스가 배경 로고를 완전히 가리지 않도록 배경판 투명화 조절 */
     .block-container {{
-        background-color: rgba(255, 255, 255, 0.5);
+        background-color: rgba(255, 255, 255, 0.6);
         border-radius: 10px;
         padding: 30px !important;
     }}
@@ -41,7 +39,7 @@ if os.path.exists(logo_filename):
     '''
     st.markdown(page_bg_img, unsafe_allow_html=True)
 
-# 🏢 [상단 헤더 레이아웃] 좌측 상단 타이틀 및 우측 상단 소속 명칭 딱 두 개만 정돈
+# 🏢 [상단 헤더 레이아웃]
 header_col1, header_col2 = st.columns([2, 1])
 
 with header_col1:
@@ -81,21 +79,21 @@ with col1:
     notice_file = st.file_uploader(
         "관세청 '월별납부 개별고지목록' (Excel)", 
         type=["xlsx", "xls"], 
-        key="notice_final_fixed_v14"
+        key="notice_final_fixed_v16"
     )
     
     pdf_files = st.file_uploader(
         "수입신고필증(면장) 통합본 파일 (PDF)", 
         type=["pdf"], 
         accept_multiple_files=True, 
-        key="declaration_final_fixed_v14"
+        key="declaration_final_fixed_v16"
     )
     
     st.markdown("---")
     start_btn = st.button("🚀 최종 마스터 대장 산출하기", use_container_width=True, type="primary")
     
     if not os.path.exists(logo_filename):
-        st.info("💡 '삼륭물산한글로고.png' 파일을 app.py와 같은 폴더에 업로드하시면 중앙 배경 워터마크 로고가 활성화됩니다.")
+        st.info("💡 '삼륭물산한글로고.png' 파일을 app.py와 같은 폴더에 업로드하시면 배경 워터마크 로고가 활성화됩니다.")
 
 with col2:
     st.markdown("### 📋 2. 정산 마스터 대장 결과물")
@@ -164,11 +162,13 @@ with col2:
                     )
                     
                     extracted_data = json.loads(response.text)
-                    pdf_master_dict = { "".join(filter(str.isalnum, item['shin_no'])): item for item in extracted_data }
+                    pdf_master_dict = {}
+                    for item in extracted_data:
+                        k = "".join(filter(str.isalnum, str(item.get('shin_no', ''))))
+                        pdf_master_dict[k] = item
                     
                     processed_data = []
                     
-                    # 🛠️ [에러 해결 구역] 루프 하위 구역들의 공백과 인덴트를 칼같이 맞추었습니다.
                     for idx, row in df_notice_all.iterrows():
                         no = idx + 1
                         excel_shin_no = str(row.get('신고번호', '')).strip()
@@ -176,33 +176,50 @@ with col2:
                         goji_no = str(row.get('납부(고지)번호', row.get('납부번호', '미확인'))).strip()
                         sheet_se관 = str(row.get('원본시트세관', ''))
                         
-                        actual_vat_amount = int(row.get('실제부가세', 0))
-                        shin_date = bl_no = total_usd = fx_rate = freight_krw = insurance_krw = ""
+                        try:
+                            actual_vat_amount = int(float(str(row.get('실제부가세', 0)).replace(",", "")))
+                        except:
+                            actual_vat_amount = 0
+                            
+                        shin_date = ""
+                        bl_no = ""
                         se관_name = sheet_se관 + "세관"
                         note = "서류 누락"
                         
                         usd_num = 0.0
-                        fx_num = 0.0
+                        fx_num = 1.0
                         freight_num = 0
                         insurance_num = 0
                         incoterms_type = "FCA"
                         
                         if clean_excel_shin in pdf_master_dict:
                             ai_data = pdf_master_dict[clean_excel_shin]
-                            shin_date = ai_data.get('shin_date', '')
-                            bl_no = ai_data.get('bl_no', '')
-                            incoterms_type = ai_data.get('incoterms', 'FCA')
-                            usd_num = float(ai_data.get('usd_amount', 0))
+                            shin_date = str(ai_data.get('shin_date', ''))
+                            bl_no = str(ai_data.get('bl_no', ''))
+                            incoterms_type = str(ai_data.get('incoterms', 'FCA')).upper()
                             
-                            fx_str = str(ai_data.get('fx_rate', '1')).replace(",", "")
-                            fx_num = float(fx_str)
+                            try:
+                                usd_num = float(str(ai_data.get('usd_amount', 0)).replace(",", ""))
+                            except:
+                                usd_num = 0.0
+                                
+                            try:
+                                fx_num = float(str(ai_data.get('fx_rate', '1')).replace(",", ""))
+                            except:
+                                fx_num = 1.0
                             
-                            if incoterms_type in ["CIF", "DAP"]:
+                            if incoterms_type in ["CIF", "DAP", "CIP"]:
                                 freight_num = 0
                                 insurance_num = 0
                             else:
-                                freight_num = int(float(str(ai_data.get('freight', 0)).replace(",", "")))
-                                insurance_num = int(float(str(ai_data.get('insurance', 0)).replace(",", "")))
+                                try:
+                                    freight_num = int(float(str(ai_data.get('freight', 0)).replace(",", "")))
+                                except:
+                                    freight_num = 0
+                                try:
+                                    insurance_num = int(float(str(ai_data.get('insurance', 0)).replace(",", "")))
+                                except:
+                                    insurance_num = 0
                                 
                             note = "정상 매칭"
                         
@@ -234,6 +251,7 @@ with col2:
                     num_format = wb.add_format({'num_format': '#,##0'})
                     usd_format = wb.add_format({'num_format': '#,##0.00'})
                     fx_format = wb.add_format({'num_format': '#,##0.0000'})
+                    align_center = wb.add_format({'align': 'center'})
                     
                     ws.set_column('D:D', 18, num_format)
                     ws.set_column('G:G', 18, usd_format)
@@ -241,13 +259,15 @@ with col2:
                     ws.set_column('J:K', 15, num_format)
                     
                     ws.write('N1', '과세가격(원화산출식)')
-                    ws.write('O1', '수식검증 부가세(10원절사)')
+                    # 🛠️ [요청 수정] 10원 단위 절사가 아닌, 원 단위만 버려서 0으로 맞추는 구조 수식 적용 (ROUNDDOWN -1)
+                    ws.write('O1', '수식검증 부가세(원단위 버림)')
                     ws.write('P1', '고지액 검증 결과')
                     
                     for i in range(2, len(processed_data) + 2):
                         ws.write_formula(f'N{i}', f'=(G{i}*I{i})+J{i}+K{i}', num_format)
-                        ws.write_formula(f'O{i}', f'=FLOOR(N{i}*0.1, 10)', num_format)
-                        ws.write_formula(f'P{i}', f'=IF(D{i}=O{i}, "일치", "❌ 금액 불일치")', wb.add_format({'align': 'center'}))
+                        # ROUNDDOWN(값, -1) 처리를 통해 원 단위를 0으로 수렴하게 만듭니다. (예: 12,345 -> 12,340)
+                        ws.write_formula(f'O{i}', f'=ROUNDDOWN(N{i}*0.1, -1)', num_format)
+                        ws.write_formula(f'P{i}', f'=IF(D{i}=O{i}, "일치", "❌ 금액 불일치")', align_center)
                         
                     workbook.close()
                     excel_data = output_excel.getvalue()
