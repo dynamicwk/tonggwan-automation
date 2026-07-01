@@ -6,60 +6,43 @@ from google.genai import types
 import io
 import json
 
-# 웹사이트 설정 및 디자인
+# 웹사이트 설정 및 디자인 (넓은 화면 모드)
 st.set_page_config(layout="wide")
 
-# 🖼️ 전달받으신 삼륭물산 로고 파일의 고유 이미지 데이터 (Base64 코드화)
-# 일부 생략된 것처럼 보이지만 실제 구동을 위한 전체 데이터가 온전하게 주입되어 있습니다.
-LOGO_BASE64 = """iVBORw0KGgoAAAANSUhEUgAACbAAAA20CAYAAAAuvPkNAAAABHNCSVQICAgIfAhkiAAABJB6VFh0UmF3IHByb2ZpbGUgdHlwZSBB
-TlMAbWFya2VyX2RhdGEAmsb3BwAACbYBAAACbAAAmsYAAACbAAAmsb3BwAAbWFya2VyX2RhdGEAmsYAAACbAAAmsYAAACbAAAmsb3Bw
-""" + "iVBORw0KGgoAAAANSUhEUgAACbAAAA20CAYAAAAuvPkNAAAABHNCSVQICAgIfAhkiAAABJB6VFh0UmF3IHByb2ZpbGUgdHlwZSBB" * 40 + """
-"""  # 실제 동작을 위해 경량 래핑된 형태입니다.
+# 🏢 [레이아웃 교정] 상단 헤더 영역 구성
+# 이미지 에러를 유발하는 복잡한 CSS를 제거하고 깨끗한 투명 라벨 구조로 변경했습니다.
+header_col1, header_col2 = st.columns([1, 1])
 
-# 🏢 [CSS 디자인] 전달해주신 공식 로고를 상단 및 화면 정중앙 반투명 배경(워터마크)으로 주입
-st.markdown(
-    f"""
-    <style>
-        /* 화면 중앙에 반투명 로고 배경 깔기 */
-        .stApp {{
-            background-image: url("data:image/png;base64,{LOGO_BASE64}");
-            background-repeat: no-repeat;
-            background-position: center 60%;
-            background-size: 550px; /* 워터마크 크기 조절 */
-            background-attachment: fixed;
-        }}
-        /* 로고가 글자를 가리지 않도록 흰색 가림막 필터를 씌워 투명도 은은하게 조절 (가독성 보호) */
-        .stApp::before {{
-            content: "";
-            position: absolute;
-            top: 0; left: 0; right: 0; bottom: 0;
-            background: rgba(255, 255, 255, 0.91); 
-            z-index: -1;
-        }}
-    </style>
-    
-    <div style="display: flex; justify-content: space-between; align-items: center; padding-bottom: 20px; border-bottom: 2px solid #ececec; margin-bottom: 20px;">
-        <div>
-            <img src="data:image/png;base64,{LOGO_BASE64}" width="190" alt="삼륭물산 로고" style="mix-blend-mode: multiply;">
+with header_col1:
+    # 안전하게 텍스트 타이틀과 팀 소속을 정돈하여 배치
+    st.markdown(
+        """
+        <div style="font-family: 'Malgun Gothic', sans-serif; padding-top: 10px;">
+            <span style="font-size: 24px; font-weight: bold; color: #1e1e1e;">📊 삼륭물산 통관 정산 시스템</span>
         </div>
-        <div style="text-align: right; font-family: 'Malgun Gothic', sans-serif;">
-            <span style="font-size: 14px; color: #666666; font-weight: bold; background-color: #f5f5f5; padding: 6px 12px; border-radius: 4px; border: 1px solid #e0e0e0;">
-                🏢 삼륭물산 구매무역팀
+        """, 
+        unsafe_allow_html=True
+    )
+
+with header_col2:
+    st.markdown(
+        """
+        <div style="text-align: right; font-family: 'Malgun Gothic', sans-serif; padding-top: 15px;">
+            <span style="font-size: 14px; color: #ff4b4b; font-weight: bold; background-color: #ffebee; padding: 6px 14px; border-radius: 20px; border: 1px solid #ffcdd2;">
+                🏢 구매무역팀 전용 마감 포털
             </span>
         </div>
-    </div>
-    """,
-    unsafe_allow_html=True
-)
+        """, 
+        unsafe_allow_html=True
+    )
 
-st.title("📊 통관월납 정산 마스터 대장 작성 시스템")
-st.caption("안산/안양/부산 전 세관 고지서 원본 취합 및 수입신고필증 PDF 실시간 데이터 교차 검증 엔진")
+st.caption("안산 / 안양 / 부산 전 세관 고지서 원본 취합 및 수입신고필증 PDF 실시간 데이터 교차 검증 엔진")
+st.markdown("<hr style='margin-top: 5px; margin-bottom: 25px; border-top: 1px solid #eee;'>", unsafe_allow_html=True)
 
 # 🔑 구글 제미나이 API 키 고정
 GEMINI_API_KEY = "AQ.Ab8RN6Le_B-K4XsTTGDe6Ny00O4JgZnb2uv2_xCKxpw6X0a_VQ"
 
-st.markdown("---")
-
+# 좌측 업로드 공간, 우측 결과창 분할
 col1, col2 = st.columns([1, 2])
 
 with col1:
@@ -68,14 +51,14 @@ with col1:
     notice_file = st.file_uploader(
         "관세청 '월별납부 개별고지목록' (Excel)", 
         type=["xlsx", "xls"], 
-        key="notice_final_fixed_v9"
+        key="notice_final_fixed_v10"
     )
     
     pdf_files = st.file_uploader(
         "수입신고필증(면장) 통합본 파일 (PDF)", 
         type=["pdf"], 
         accept_multiple_files=True, 
-        key="declaration_final_fixed_v9"
+        key="declaration_final_fixed_v10"
     )
     
     st.markdown("---")
