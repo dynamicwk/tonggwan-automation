@@ -5,6 +5,7 @@ from google import genai
 from google.genai import types
 import io
 import json
+import os
 
 # 웹사이트 설정 및 디자인 (넓은 화면 모드)
 st.set_page_config(layout="wide")
@@ -23,10 +24,11 @@ with header_col1:
     )
 
 with header_col2:
+    # 우측 상단 삼륭물산 구매무역팀 깔끔한 텍스트 처리
     st.markdown(
         """
         <div style="text-align: right; font-family: 'Malgun Gothic', sans-serif; padding-top: 15px;">
-            <span style="font-size: 14px; color: #444444; font-weight: bold; background-color: #f5f5f5; padding: 6px 14px; border-radius: 4px; border: 1px solid #e0e0e0;">
+            <span style="font-size: 15px; color: #333333; font-weight: bold;">
                 🏢 삼륭물산 구매무역팀
             </span>
         </div>
@@ -49,22 +51,27 @@ with col1:
     notice_file = st.file_uploader(
         "관세청 '월별납부 개별고지목록' (Excel)", 
         type=["xlsx", "xls"], 
-        key="notice_final_fixed_v11"
+        key="notice_final_fixed_v12"
     )
     
     pdf_files = st.file_uploader(
         "수입신고필증(면장) 통합본 파일 (PDF)", 
         type=["pdf"], 
         accept_multiple_files=True, 
-        key="declaration_final_fixed_v11"
+        key="declaration_final_fixed_v12"
     )
     
     st.markdown("---")
     start_btn = st.button("🚀 최종 마스터 대장 산출하기", use_container_width=True, type="primary")
     
-    # 🖼️ [요청 반영] 버튼 바로 아래쪽에 절대 깨지지 않는 삼륭물산 공식 웹 로고 배치
+    # 🖼️ [요청 반영] 업로드하신 실제 png 파일 명을 직접 읽어서 버튼 하단에 무조건 출력하는 엔진
     st.markdown("<br>", unsafe_allow_html=True)
-    st.image("http://www.samryung.co.kr/img/common/logo.png", width=200)
+    logo_filename = "삼륭물산한글로고.png"
+    if os.path.exists(logo_filename):
+        st.image(logo_filename, width=220)
+    else:
+        # 파일명이 다를 경우를 대비한 대체 코드
+        st.info("💡 '삼륭물산한글로고.png' 파일을 app.py와 같은 폴더에 업로드하시면 여기에 로고가 표시됩니다.")
 
 with col2:
     st.markdown("### 📋 2. 정산 마스터 대장 결과물")
