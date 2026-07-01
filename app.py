@@ -79,14 +79,14 @@ with col1:
     notice_file = st.file_uploader(
         "관세청 '월별납부 개별고지목록' (Excel)", 
         type=["xlsx", "xls"], 
-        key="notice_final_fixed_v17"
+        key="notice_final_fixed_v18"
     )
     
     pdf_files = st.file_uploader(
         "수입신고필증(면장) 통합본 파일 (PDF)", 
         type=["pdf"], 
         accept_multiple_files=True, 
-        key="declaration_final_fixed_v17"
+        key="declaration_final_fixed_v18"
     )
     
     st.markdown("---")
@@ -138,22 +138,24 @@ with col2:
                         )
                         ai_pdf_contents.append(ai_file)
                     
-                    # 🛠️ [AI 프롬프트 보강] USD 소수점 둘째 자리까지의 강제 추출 조건 명시
+                    # 🛠️ [프롬프트 극강 보강] ⑤⑦ 운임, ⑤⑧ 보험료 타겟팅 강화 조항 신설
                     prompt = """
-                    당신은 관세 법인 소속의 정산 자동화 AI입니다. 제공된 수입신고필증 PDF 문서 전체를 페이지별로 전수조사하여, 각 '신고번호'별로 아래 항목들을 정확하게 추출하여 JSON 배열 형태로 응답해 주세요.
+                    당신은 관세 법인 소속의 정산 자동화 AI입니다. 제공된 수입신고필증 PDF 문서 전체를 전수조사하여, 각 '신고번호'별로 아래 항목들을 정확하게 추출하여 JSON 배열 형태로 응답해 주세요.
                     
-                    CRITICAL REQUIREMENT:
-                    - usd_amount (결제금액): 필증에 적힌 달러 금액을 절대로 반올림하거나 정수로 만들지 마십시오. 소수점 이하 자리(예: .43, .12 등)가 있다면 반드시 소수점 둘째 자리까지 포함된 원래의 소수형태(Float)로 완벽하게 추출해야 합니다. 예: 139504.43
+                    [핵심 요구사항 - 반드시 준수]
+                    1. usd_amount (결제금액): 소수점 이하 자리(센트 단위)가 있다면 절대로 버림/반올림하지 말고 원래의 소수점 둘째 자리까지 완벽한 소수로 추출하십시오. (예: 139504.48)
+                    2. freight (⑤⑦ 운임): 각 란의 쪼개진 운임이 아니라, 필증 맨 아래 또는 결제금액 우측에 명시된 해당 신고번호 건의 '총 운임비 KRW 금액 전체'를 추출하십시오. 
+                    3. insurance (⑤⑧ 보험료): 각 란의 소액 보험료가 아니라, 필증 맨 아래쪽에 명시된 해당 신고건의 '총 보험증권 가액/보험료 KRW 금액 전체'를 추출하십시오. 만약 인도조건이 CIF, DAP, CIP인 경우 특약이 없다면 기본적으로 0으로 처리하되, 필증에 총액 수치가 명시되어 있다면 그 수치를 우선합니다.
                     
                     추출 항목 리스트:
                     - shin_no: 신고번호
                     - shin_date: 신고일자
                     - bl_no: ④ B/L(AWB)번호
                     - fx_rate: 환율
-                    - incoterms: 인도조건 (FCA, CIF, DAP 등)
-                    - usd_amount: 결제금액 (반드시 소수점 아래 자리까지 포함할 것)
-                    - freight: 운임
-                    - insurance: 보험료
+                    - incoterms: 인도조건 (FCA, CIF, DAP, CIP 등)
+                    - usd_amount: 결제금액 (소수점 포함)
+                    - freight: 총 운임비 (KRW 금액 숫자만)
+                    - insurance: 총 보험료 (KRW 금액 숫자만)
                     
                     응답은 마크다운 설명 없이 오직 순수한 JSON 데이터 형식으로만 반환하세요.
                     """
@@ -203,7 +205,6 @@ with col2:
                             bl_no = str(ai_data.get('bl_no', ''))
                             incoterms_type = str(ai_data.get('incoterms', 'FCA')).upper()
                             
-                            # 🛠️ 소수점이 지워지지 않도록 float 타입으로 정밀하게 정제 및 콤마 제거
                             try:
                                 usd_num = float(str(ai_data.get('usd_amount', 0)).replace(",", ""))
                             except:
@@ -214,18 +215,19 @@ with col2:
                             except:
                                 fx_num = 1.0
                             
-                            if incoterms_type in ["CIF", "DAP", "CIP"]:
+                            # 데이터 안전 정제
+                            try:
+                                freight_num = int(float(str(ai_data.get('freight', 0)).replace(",", "")))
+                            except:
                                 freight_num = 0
+                                
+                            try:
+                                insurance_num = int(float(str(ai_data.get('insurance', 0)).replace(",", "")))
+                            except:
                                 insurance_num = 0
-                            else:
-                                try:
-                                    freight_num = int(float(str(ai_data.get('freight', 0)).replace(",", "")))
-                                except:
-                                    freight_num = 0
-                                try:
-                                    insurance_num = int(float(str(ai_data.get('insurance', 0)).replace(",", "")))
-                                except:
-                                    insurance_num = 0
+                                
+                            if incoterms_type in ["CIF", "DAP", "CIP"] and freight_num == 0 and insurance_num == 0:
+                                pass # 이미 0인 경우 유지
                                 
                             note = "정상 매칭"
                         
@@ -255,7 +257,6 @@ with col2:
                     wb = workbook.book
                     
                     num_format = wb.add_format({'num_format': '#,##0'})
-                    # 🛠️ 마스터 대장 화면 및 엑셀 결과물에서도 결제금액(USD) 열이 소수점 둘째 자리까지 선명하게 보이도록 포맷 고정
                     usd_format = wb.add_format({'num_format': '#,##0.00'})
                     fx_format = wb.add_format({'num_format': '#,##0.0000'})
                     align_center = wb.add_format({'align': 'center'})
