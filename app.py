@@ -9,16 +9,14 @@ import json
 # 웹사이트 설정 및 디자인 (넓은 화면 모드)
 st.set_page_config(layout="wide")
 
-# 🏢 [레이아웃 교정] 상단 헤더 영역 구성
-# 이미지 에러를 유발하는 복잡한 CSS를 제거하고 깨끗한 투명 라벨 구조로 변경했습니다.
-header_col1, header_col2 = st.columns([1, 1])
+# 🏢 [상단 레이아웃] 좌측 상단 타이틀 및 우측 상단 소속 표시
+header_col1, header_col2 = st.columns([2, 1])
 
 with header_col1:
-    # 안전하게 텍스트 타이틀과 팀 소속을 정돈하여 배치
     st.markdown(
         """
-        <div style="font-family: 'Malgun Gothic', sans-serif; padding-top: 10px;">
-            <span style="font-size: 24px; font-weight: bold; color: #1e1e1e;">📊 삼륭물산 통관 정산 시스템</span>
+        <div style="font-family: 'Malgun Gothic', sans-serif; padding-top: 10px; display: flex; align-items: center; gap: 15px;">
+            <span style="font-size: 26px; font-weight: bold; color: #1e1e1e;">📊 삼륭물산 통관 정산 시스템</span>
         </div>
         """, 
         unsafe_allow_html=True
@@ -28,8 +26,8 @@ with header_col2:
     st.markdown(
         """
         <div style="text-align: right; font-family: 'Malgun Gothic', sans-serif; padding-top: 15px;">
-            <span style="font-size: 14px; color: #ff4b4b; font-weight: bold; background-color: #ffebee; padding: 6px 14px; border-radius: 20px; border: 1px solid #ffcdd2;">
-                🏢 구매무역팀 전용 마감 포털
+            <span style="font-size: 14px; color: #444444; font-weight: bold; background-color: #f5f5f5; padding: 6px 14px; border-radius: 4px; border: 1px solid #e0e0e0;">
+                🏢 삼륭물산 구매무역팀
             </span>
         </div>
         """, 
@@ -51,18 +49,22 @@ with col1:
     notice_file = st.file_uploader(
         "관세청 '월별납부 개별고지목록' (Excel)", 
         type=["xlsx", "xls"], 
-        key="notice_final_fixed_v10"
+        key="notice_final_fixed_v11"
     )
     
     pdf_files = st.file_uploader(
         "수입신고필증(면장) 통합본 파일 (PDF)", 
         type=["pdf"], 
         accept_multiple_files=True, 
-        key="declaration_final_fixed_v10"
+        key="declaration_final_fixed_v11"
     )
     
     st.markdown("---")
     start_btn = st.button("🚀 최종 마스터 대장 산출하기", use_container_width=True, type="primary")
+    
+    # 🖼️ [요청 반영] 버튼 바로 아래쪽에 절대 깨지지 않는 삼륭물산 공식 웹 로고 배치
+    st.markdown("<br>", unsafe_allow_html=True)
+    st.image("http://www.samryung.co.kr/img/common/logo.png", width=200)
 
 with col2:
     st.markdown("### 📋 2. 정산 마스터 대장 결과물")
