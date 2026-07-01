@@ -79,14 +79,14 @@ with col1:
     notice_file = st.file_uploader(
         "관세청 '월별납부 개별고지목록' (Excel)", 
         type=["xlsx", "xls"], 
-        key="notice_final_fixed_v16"
+        key="notice_final_fixed_v17"
     )
     
     pdf_files = st.file_uploader(
         "수입신고필증(면장) 통합본 파일 (PDF)", 
         type=["pdf"], 
         accept_multiple_files=True, 
-        key="declaration_final_fixed_v16"
+        key="declaration_final_fixed_v17"
     )
     
     st.markdown("---")
@@ -138,15 +138,20 @@ with col2:
                         )
                         ai_pdf_contents.append(ai_file)
                     
+                    # 🛠️ [AI 프롬프트 보강] USD 소수점 둘째 자리까지의 강제 추출 조건 명시
                     prompt = """
                     당신은 관세 법인 소속의 정산 자동화 AI입니다. 제공된 수입신고필증 PDF 문서 전체를 페이지별로 전수조사하여, 각 '신고번호'별로 아래 항목들을 정확하게 추출하여 JSON 배열 형태로 응답해 주세요.
                     
+                    CRITICAL REQUIREMENT:
+                    - usd_amount (결제금액): 필증에 적힌 달러 금액을 절대로 반올림하거나 정수로 만들지 마십시오. 소수점 이하 자리(예: .43, .12 등)가 있다면 반드시 소수점 둘째 자리까지 포함된 원래의 소수형태(Float)로 완벽하게 추출해야 합니다. 예: 139504.43
+                    
+                    추출 항목 리스트:
                     - shin_no: 신고번호
                     - shin_date: 신고일자
                     - bl_no: ④ B/L(AWB)번호
                     - fx_rate: 환율
                     - incoterms: 인도조건 (FCA, CIF, DAP 등)
-                    - usd_amount: 결제금액
+                    - usd_amount: 결제금액 (반드시 소수점 아래 자리까지 포함할 것)
                     - freight: 운임
                     - insurance: 보험료
                     
@@ -198,6 +203,7 @@ with col2:
                             bl_no = str(ai_data.get('bl_no', ''))
                             incoterms_type = str(ai_data.get('incoterms', 'FCA')).upper()
                             
+                            # 🛠️ 소수점이 지워지지 않도록 float 타입으로 정밀하게 정제 및 콤마 제거
                             try:
                                 usd_num = float(str(ai_data.get('usd_amount', 0)).replace(",", ""))
                             except:
@@ -249,6 +255,7 @@ with col2:
                     wb = workbook.book
                     
                     num_format = wb.add_format({'num_format': '#,##0'})
+                    # 🛠️ 마스터 대장 화면 및 엑셀 결과물에서도 결제금액(USD) 열이 소수점 둘째 자리까지 선명하게 보이도록 포맷 고정
                     usd_format = wb.add_format({'num_format': '#,##0.00'})
                     fx_format = wb.add_format({'num_format': '#,##0.0000'})
                     align_center = wb.add_format({'align': 'center'})
@@ -259,13 +266,11 @@ with col2:
                     ws.set_column('J:K', 15, num_format)
                     
                     ws.write('N1', '과세가격(원화산출식)')
-                    # 🛠️ [요청 수정] 10원 단위 절사가 아닌, 원 단위만 버려서 0으로 맞추는 구조 수식 적용 (ROUNDDOWN -1)
                     ws.write('O1', '수식검증 부가세(원단위 버림)')
                     ws.write('P1', '고지액 검증 결과')
                     
                     for i in range(2, len(processed_data) + 2):
                         ws.write_formula(f'N{i}', f'=(G{i}*I{i})+J{i}+K{i}', num_format)
-                        # ROUNDDOWN(값, -1) 처리를 통해 원 단위를 0으로 수렴하게 만듭니다. (예: 12,345 -> 12,340)
                         ws.write_formula(f'O{i}', f'=ROUNDDOWN(N{i}*0.1, -1)', num_format)
                         ws.write_formula(f'P{i}', f'=IF(D{i}=O{i}, "일치", "❌ 금액 불일치")', align_center)
                         
