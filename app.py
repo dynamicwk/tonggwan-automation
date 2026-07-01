@@ -11,7 +11,7 @@ import base64
 # 웹사이트 설정 및 디자인 (넓은 화면 모드)
 st.set_page_config(layout="wide")
 
-# 🖼️ [워터마크 엔진] 저장소의 PNG 파일을 읽어서 CSS 배경으로 주입하는 함수
+# 🖼️ [워터마크 엔진] 깃허브 저장소에 업로드된 PNG 파일을 읽어서 CSS 배경으로 주입
 def get_base64_of_bin_file(bin_file):
     with open(bin_file, 'rb') as f:
         data = f.read()
@@ -21,20 +21,19 @@ logo_filename = "삼륭물산한글로고.png"
 
 if os.path.exists(logo_filename):
     bin_str = get_base64_of_bin_file(logo_filename)
-    # 투명도(opacity) 0.06 정도로 아주 은은하게 설정하여 본문 글씨를 가리지 않도록 중앙 배치
+    # 투명도(opacity)를 은은하게 조절하여 본문 글씨 가독성을 보호하면서 화면 중앙에 크게 배치
     page_bg_img = f'''
     <style>
     .stApp {{
         background-image: url("data:image/png;base64,{bin_str}");
-        background-size: 55%; /* 화면 대비 로고 크기 설정 (큼직하게 55%) */
+        background-size: 55%; /* 화면 대비 워터마크 크기 */
         background-repeat: no-repeat;
         background-position: center center;
         background-attachment: fixed;
-        opacity: 1.0; /* 본문 투명도 고정 */
     }}
-    /* 콘텐츠 박스가 배경 로고를 가리지 않도록 메인 영역 배경 투명화 처리 */
+    /* 본문 데이터 박스가 배경 로고를 완전히 가리지 않도록 배경판 투명화 조절 */
     .block-container {{
-        background-color: rgba(255, 255, 255, 0.4);
+        background-color: rgba(255, 255, 255, 0.5);
         border-radius: 10px;
         padding: 30px !important;
     }}
@@ -42,13 +41,13 @@ if os.path.exists(logo_filename):
     '''
     st.markdown(page_bg_img, unsafe_allow_html=True)
 
-# 🏢 [상단 레이아웃] 좌측 상단 타이틀 및 우측 상단 소속 표시
+# 🏢 [상단 헤더 레이아웃] 좌측 상단 타이틀 및 우측 상단 소속 명칭 딱 두 개만 정돈
 header_col1, header_col2 = st.columns([2, 1])
 
 with header_col1:
     st.markdown(
         """
-        <div style="font-family: 'Malgun Gothic', sans-serif; padding-top: 10px; display: flex; align-items: center; gap: 15px;">
+        <div style="font-family: 'Malgun Gothic', sans-serif; padding-top: 10px;">
             <span style="font-size: 26px; font-weight: bold; color: #1e1e1e;">📊 삼륭물산 통관 정산 시스템</span>
         </div>
         """, 
@@ -56,7 +55,6 @@ with header_col1:
     )
 
 with header_col2:
-    # 우측 상단 삼륭물산 구매무역팀 깔끔한 텍스트 처리
     st.markdown(
         """
         <div style="text-align: right; font-family: 'Malgun Gothic', sans-serif; padding-top: 15px;">
@@ -83,21 +81,21 @@ with col1:
     notice_file = st.file_uploader(
         "관세청 '월별납부 개별고지목록' (Excel)", 
         type=["xlsx", "xls"], 
-        key="notice_final_fixed_v13"
+        key="notice_final_fixed_v14"
     )
     
     pdf_files = st.file_uploader(
         "수입신고필증(면장) 통합본 파일 (PDF)", 
         type=["pdf"], 
         accept_multiple_files=True, 
-        key="declaration_final_fixed_v13"
+        key="declaration_final_fixed_v14"
     )
     
     st.markdown("---")
     start_btn = st.button("🚀 최종 마스터 대장 산출하기", use_container_width=True, type="primary")
     
     if not os.path.exists(logo_filename):
-        st.info("💡 '삼륭물산한글로고.png' 파일을 app.py와 같은 폴더에 업로드하시면 중앙 배경에 은은한 워터마크 로고가 활성화됩니다.")
+        st.info("💡 '삼륭물산한글로고.png' 파일을 app.py와 같은 폴더에 업로드하시면 중앙 배경 워터마크 로고가 활성화됩니다.")
 
 with col2:
     st.markdown("### 📋 2. 정산 마스터 대장 결과물")
@@ -170,4 +168,100 @@ with col2:
                     
                     processed_data = []
                     
+                    # 🛠️ [에러 해결 구역] 루프 하위 구역들의 공백과 인덴트를 칼같이 맞추었습니다.
                     for idx, row in df_notice_all.iterrows():
+                        no = idx + 1
+                        excel_shin_no = str(row.get('신고번호', '')).strip()
+                        clean_excel_shin = "".join(filter(str.isalnum, excel_shin_no))
+                        goji_no = str(row.get('납부(고지)번호', row.get('납부번호', '미확인'))).strip()
+                        sheet_se관 = str(row.get('원본시트세관', ''))
+                        
+                        actual_vat_amount = int(row.get('실제부가세', 0))
+                        shin_date = bl_no = total_usd = fx_rate = freight_krw = insurance_krw = ""
+                        se관_name = sheet_se관 + "세관"
+                        note = "서류 누락"
+                        
+                        usd_num = 0.0
+                        fx_num = 0.0
+                        freight_num = 0
+                        insurance_num = 0
+                        incoterms_type = "FCA"
+                        
+                        if clean_excel_shin in pdf_master_dict:
+                            ai_data = pdf_master_dict[clean_excel_shin]
+                            shin_date = ai_data.get('shin_date', '')
+                            bl_no = ai_data.get('bl_no', '')
+                            incoterms_type = ai_data.get('incoterms', 'FCA')
+                            usd_num = float(ai_data.get('usd_amount', 0))
+                            
+                            fx_str = str(ai_data.get('fx_rate', '1')).replace(",", "")
+                            fx_num = float(fx_str)
+                            
+                            if incoterms_type in ["CIF", "DAP"]:
+                                freight_num = 0
+                                insurance_num = 0
+                            else:
+                                freight_num = int(float(str(ai_data.get('freight', 0)).replace(",", "")))
+                                insurance_num = int(float(str(ai_data.get('insurance', 0)).replace(",", "")))
+                                
+                            note = "정상 매칭"
+                        
+                        processed_data.append({
+                            "번호": no,
+                            "신고번호": excel_shin_no,
+                            "납부(고지)번호": goji_no,
+                            "수입부가세 (고지금액)": actual_vat_amount,
+                            "신고일자": shin_date,
+                            "④ B/L번호 (HBL)": bl_no,
+                            "③⑦ 결제금액 (USD)": usd_num,
+                            "인도조건": incoterms_type,
+                            "환율": fx_num,
+                            "⑤⑦ 운임비 (KRW)": freight_num,
+                            "⑤⑧ 보험증권 (KRW)": insurance_num,
+                            "세관": se관_name,
+                            "비고": note
+                        })
+                    
+                    output_excel = io.BytesIO()
+                    workbook = pd.ExcelWriter(output_excel, engine='xlsxwriter')
+                    
+                    df_final = pd.DataFrame(processed_data)
+                    df_final.to_excel(workbook, sheet_name="통관월납_정산대장", index=False)
+                    
+                    ws = workbook.sheets["통관월납_정산대장"]
+                    wb = workbook.book
+                    
+                    num_format = wb.add_format({'num_format': '#,##0'})
+                    usd_format = wb.add_format({'num_format': '#,##0.00'})
+                    fx_format = wb.add_format({'num_format': '#,##0.0000'})
+                    
+                    ws.set_column('D:D', 18, num_format)
+                    ws.set_column('G:G', 18, usd_format)
+                    ws.set_column('I:I', 12, fx_format)
+                    ws.set_column('J:K', 15, num_format)
+                    
+                    ws.write('N1', '과세가격(원화산출식)')
+                    ws.write('O1', '수식검증 부가세(10원절사)')
+                    ws.write('P1', '고지액 검증 결과')
+                    
+                    for i in range(2, len(processed_data) + 2):
+                        ws.write_formula(f'N{i}', f'=(G{i}*I{i})+J{i}+K{i}', num_format)
+                        ws.write_formula(f'O{i}', f'=FLOOR(N{i}*0.1, 10)', num_format)
+                        ws.write_formula(f'P{i}', f'=IF(D{i}=O{i}, "일치", "❌ 금액 불일치")', wb.add_format({'align': 'center'}))
+                        
+                    workbook.close()
+                    excel_data = output_excel.getvalue()
+                    
+                    st.success("🎉 정산 마스터 대장 작성이 완료되었습니다!")
+                    
+                    st.download_button(
+                        label="📥 정산 마스터 대장 엑셀 파일 다운로드 (.xlsx)",
+                        data=excel_data,
+                        file_name="통관월납_정산_마스터대장_수식포함.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        use_container_width=True
+                    )
+                    st.dataframe(df_final, use_container_width=True)
+                    
+                except Exception as e:
+                    st.error(f"❌ 최종 양식 변환 중 오류가 발생했습니다: {e}")
