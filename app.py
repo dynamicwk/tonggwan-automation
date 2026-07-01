@@ -139,7 +139,7 @@ with col2:
                         ai_pdf_contents.append(ai_file)
                     
                     prompt = """
-                    당신은 관세 법인 소속의 정산 자동화 AI입니다. 제공된 수입신고필증 PDF 문서 전체를 전수조사하여, 각 '신고번호'별로 아래 항목들을 정확하게 추출하여 JSON 배열 형태로 응답해 주세요.
+                    당신은 관세 법인 소속의 정산 자동화 AI입니다. 제공된 수입신고필증 PDF 문서 전체를 페이지별로 전수조사하여, 각 '신고번호'별로 아래 항목들을 정확하게 추출하여 JSON 배열 형태로 응답해 주세요.
                     
                     [엄격한 추출 규칙 - 필수 준수]
                     1. 페이지 범위 격리: 여러 건의 면장이 합쳐진 문서이므로, 추출하려는 '신고번호'가 기재된 페이지 블록 내의 숫자만 참조하십시오. 다른 신고건의 페이지에 있는 숫자를 가져오면 절대 안 됩니다.
@@ -247,7 +247,6 @@ with col2:
                             "비고": note
                         })
                     
-                    # 🛠️ 수식 포함 다중 시트 엑셀 파일 작성 시작
                     output_excel = io.BytesIO()
                     workbook = pd.ExcelWriter(output_excel, engine='xlsxwriter')
                     
@@ -260,24 +259,24 @@ with col2:
                     fx_format = wb.add_format({'num_format': '#,##0.0000'})
                     align_center = wb.add_format({'align': 'center'})
                     
-                    # 🎨 [디자인 고도화] 일치 시 파란색 글씨 처리 스타일 추가
+                    # 일치/불일치 조건부 폰트 서식
                     blue_bold_center = wb.add_format({'align': 'center', 'font_color': '#002060', 'bold': True})
                     red_bold_center = wb.add_format({'align': 'center', 'font_color': '#FF0000', 'bold': True})
                     
+                    # 요약용 테이블 서식
                     summary_header_format = wb.add_format({
                         'bg_color': '#1F4E78', 'font_color': '#FFFFFF', 'bold': True, 'align': 'center', 'border': 1
                     })
                     summary_data_format = wb.add_format({'border': 1, 'num_format': '#,##0'})
                     summary_total_format = wb.add_format({'bg_color': '#D9E1F2', 'bold': True, 'border': 1, 'num_format': '#,##0'})
                     
-                    # --- [시트 1 : Summary 시트 생성] ---
-                    ws_sum = wb.add_sheet("Summary")
-                    ws_sum.set_column('B:C', 22)
+                    # --- 🛠️ [오류 해결] add_sheet 대신 xlsxwriter 정식 메서드인 add_worksheet 사용 ---
+                    ws_sum = wb.add_worksheet("Summary")
+                    ws_sum.set_column('B:C', 25)
                     
                     ws_sum.write('B2', '🏢 세관 구분', summary_header_format)
                     ws_sum.write('C2', '💰 수입부가세 총합계 (KRW)', summary_header_format)
                     
-                    # 정산대장 시트의 데이터를 서머리하는 엑셀 수식 주입
                     last_row_idx = len(processed_data) + 1
                     ws_sum.write('B3', '안산세관', summary_data_format)
                     ws_sum.write_formula('C3', f'=SUMIF(통관월납_정산대장!L2:L{last_row_idx}, "안산세관", 통관월납_정산대장!D2:D{last_row_idx})', summary_data_format)
@@ -291,34 +290,32 @@ with col2:
                     ws_sum.write('B6', '🚀 전체 부가세 총계', summary_total_format)
                     ws_sum.write_formula('C6', '=SUM(C3:C5)', summary_total_format)
                     
-                    # --- [시트 2 : 정산대장 메인 시트 생성] ---
+                    # --- 시트 2 : 정산대장 메인 시트 생성 ---
                     df_final.to_excel(workbook, sheet_name="통관월납_정산대장", index=False)
                     ws = workbook.sheets["통관월납_정산대장"]
                     
-                    # 기본 열너비 설정
+                    # 기본 열너비 및 포맷 설정
                     ws.set_column('D:D', 18, num_format)
                     ws.set_column('G:G', 18, usd_format)
                     ws.set_column('I:I', 12, fx_format)
                     ws.set_column('J:K', 15, num_format)
                     
-                    # 🛠️ [요청 사항 1 적용] 과세가격, 수식검증부가세, 검증결과 열너비 확장 (22~25 너비 확보)
-                    ws.set_column('N:N', 24, num_format) # 과세가격
-                    ws.set_column('O:O', 25, num_format) # 수식검증 부가세
-                    ws.set_column('P:P', 22, align_center) # 고지액 검증 결과
+                    # 과세가격, 수식검증부가세, 검증결과 열너비 넉넉하게 확장
+                    ws.set_column('N:N', 24, num_format) 
+                    ws.set_column('O:O', 25, num_format) 
+                    ws.set_column('P:P', 22, align_center) 
                     
                     ws.write('N1', '과세가격(원화산출식)')
                     ws.write('O1', '수식검증 부가세(원단위 버림)')
                     ws.write('P1', '고지액 검증 결과')
                     
-                    # 수식 주입 및 🛠️ [요청 사항 2 적용] 일치 심볼 주입 및 파란색 디자인 서식 연결
+                    # 수식 주입 및 일치 심볼 맵핑
                     for i in range(2, len(processed_data) + 2):
                         ws.write_formula(f'N{i}', f'=(G{i}*I{i})+J{i}+K{i}', num_format)
                         ws.write_formula(f'O{i}', f'=ROUNDDOWN(N{i}*0.1, -1)', num_format)
-                        
-                        # IF 조건문 결과값을 심볼 매칭 형태로 수정
                         ws.write_formula(f'P{i}', f'=IF(D{i}=O{i}, "✔ 완벽 일치", "❌ 금액 불일치")', align_center)
                     
-                    # 🎨 엑셀의 조건부 서식을 이용하여 P열에 '✔ 완벽 일치'가 뜨면 자동으로 파란색 글씨가 되도록 주입
+                    # 조건부 서식 연결 (✔ 완벽 일치 문구 인식 시 파란색 진하게 변경)
                     ws.conditional_format(f'P2:P{last_row_idx}', {
                         'type': 'cell',
                         'criteria': 'equal to',
@@ -335,7 +332,7 @@ with col2:
                     workbook.close()
                     excel_data = output_excel.getvalue()
                     
-                    st.success("🎉 가독성 디자인 개선 및 세관별 Summary 연동이 모두 완료되었습니다!")
+                    st.success("🎉 가독성 디자인 개선 및 세관별 Summary 연동이 성공적으로 빌드되었습니다!")
                     
                     st.download_button(
                         label="📥 최종 고도화 정산 마스터 대장 다운로드 (.xlsx)",
