@@ -8,6 +8,44 @@ import json
 
 # 웹사이트 설정 및 디자인
 st.set_page_config(layout="wide")
+
+# 🏢 [CSS 디자인] 상단 로고/소속 배치 및 화면 중앙 반투명 배경 워터마크 주입
+st.markdown(
+    """
+    <style>
+        /* 화면 중앙에 반투명 로고 배경 깔기 */
+        .stApp {
+            background-image: url("http://www.samryung.co.kr/img/common/logo.png");
+            background-repeat: no-repeat;
+            background-position: center 60%;
+            background-size: 500px; /* 로고가 중앙에 크게 보이도록 조절 */
+            background-attachment: fixed;
+            opacity: 0.95; /* 전체 컨텐츠 가독성을 보존하면서 배경 적용 */
+        }
+        /* 로고 이미지만 흐리게 처리하기 위한 백그라운드 필터 효과 (반투명 효과 극대화) */
+        .stApp::before {
+            content: "";
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(255, 255, 255, 0.88); /* 하얀색 마스크를 덮어서 로고를 은은하게 만듦 */
+            z-index: -1;
+        }
+    </style>
+    
+    <div style="display: flex; justify-content: space-between; align-items: center; padding-bottom: 20px; border-bottom: 2px solid #ececec; margin-bottom: 20px;">
+        <div>
+            <img src="http://www.samryung.co.kr/img/common/logo.png" width="180" alt="삼륭물산 로고">
+        </div>
+        <div style="text-align: right; font-family: 'Malgun Gothic', sans-serif;">
+            <span style="font-size: 14px; color: #666666; font-weight: bold; background-color: #f5f5f5; padding: 6px 12px; border-radius: 4px; border: 1px solid #e0e0e0;">
+                🏢 삼륭물산 구매무역팀
+            </span>
+        </div>
+    </div>
+    """,
+    unsafe_allow_html=True
+)
+
 st.title("📊 통관월납 정산 마스터 대장 작성 시스템")
 st.caption("안산/안양/부산 전 세관 고지서 원본 취합 및 수입신고필증 PDF 실시간 데이터 교차 검증 엔진")
 
@@ -25,7 +63,7 @@ with col1:
     notice_file = st.file_uploader(
         "관세청 '월별납부 개별고지목록' (Excel)", 
         type=["xlsx", "xls"], 
-        key="notice_final_fixed_v8"
+        key="notice_final_fixed_v9"
     )
     
     # 2. 수입신고필증 파일들 업로드
@@ -33,7 +71,7 @@ with col1:
         "수입신고필증(면장) 통합본 파일 (PDF)", 
         type=["pdf"], 
         accept_multiple_files=True, 
-        key="declaration_final_fixed_v8"
+        key="declaration_final_fixed_v9"
     )
     
     st.markdown("---")
@@ -69,7 +107,6 @@ with col2:
                             df_sheet['원본시트세관'] = sheet.replace("세관", "").strip()
                             df_list.append(df_sheet)
                     
-                    # 💡 사용자가 수정한 엑셀 내역 그대로 100% 행 아래로 단순 결합
                     df_notice_all = pd.concat(df_list, ignore_index=True)
                     
                     # [2] 고정된 키로 제미나이 AI 클라이언트 가동
@@ -128,7 +165,6 @@ with col2:
                         goji_no = str(row.get('납부(고지)번호', row.get('납부번호', '미확인'))).strip()
                         sheet_se관 = str(row.get('원본시트세관', ''))
                         
-                        # 관세청 원본의 '부가가치세' 고지금액 수치 정확히 추출
                         actual_vat_amount = int(row.get('실제부가세', 0))
                             
                         shin_date = bl_no = total_usd = fx_rate = freight_krw = insurance_krw = ""
@@ -185,7 +221,7 @@ with col2:
                             "비고": note
                         })
                     
-                    # [5] 📥 엑셀 파일 다운로드 전용 바이너리 작성 및 수식 주입
+                    # [5] 엑셀 파일 다운로드 전용 바이너리 작성 및 수식 주입
                     output_excel = io.BytesIO()
                     workbook = pd.ExcelWriter(output_excel, engine='xlsxwriter')
                     
@@ -204,7 +240,6 @@ with col2:
                     ws.set_column('I:I', 12, fx_format)
                     ws.set_column('J:K', 15, num_format)
                     
-                    # 수식 필드 선언
                     ws.write('N1', '과세가격(원화산출식)')
                     ws.write('O1', '수식검증 부가세(10원절사)')
                     ws.write('P1', '고지액 검증 결과')
@@ -219,7 +254,6 @@ with col2:
                     
                     st.success("🎉 정산 마스터 대장 작성이 완료되었습니다!")
                     
-                    # 다운로드 버튼
                     st.download_button(
                         label="📥 정산 마스터 대장 엑셀 파일 다운로드 (.xlsx)",
                         data=excel_data,
