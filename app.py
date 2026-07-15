@@ -149,11 +149,11 @@ with tab2:
     st.info("해상물류비 정산 서비스가 대기 중입니다.")
 
 # ==========================================
-# 💰 탭 3: 외상매입금 현황 마스터 (ENSO 초록 글씨 적용 완료)
+# 💰 탭 3: 외상매입금 현황 마스터 (최종합계 완벽 구현 완료)
 # ==========================================
 with tab3:
     st.markdown("### 💰 미정산 외상매입금 현황 자동 마감 시스템")
-    st.write("반입계획서의 데이터를 기반으로 품명 오분류 체계를 전면 수정하여 단일 소계 레이아웃을 보장합니다.")
+    st.write("반입계획서의 데이터를 기반으로 정합성 필터링을 완수하고, 최하단에 수식이 연동된 총 합계 행을 생성합니다.")
     
     m_col1, m_col2 = st.columns([1, 2])
     
@@ -178,14 +178,14 @@ with tab3:
             if not uploaded_payable_plan:
                 st.error("❌ 정산 처리를 위해 반입계획서 엑셀 파일을 업로드해 주세요.")
             else:
-                with st.spinner(f"🤖 품명 동기화 작업 및 {selected_month_num}월 단일 대계 집계 테이블 구성 중..."):
+                with st.spinner(f"🤖 최종합계 연산 및 {selected_month_num}월 총계 마스터 대장 가공 중..."):
                     try:
                         excel_file = pd.ExcelFile(uploaded_payable_plan)
                         sheet_names_lower = {s.lower().replace(" ", ""): s for s in excel_file.sheet_names}
                         
                         processed_list = []
                         
-                        # ① NDP 시트 처리 (고정 열 추출: J, K, L, M)
+                        # ① NDP 시트 처리 (J, K, L, M)
                         ndp_sheet_key = next((s for s in sheet_names_lower if "ndp" in s), None)
                         if ndp_sheet_key:
                             df_ndp = pd.read_excel(excel_file, sheet_name=sheet_names_lower[ndp_sheet_key], header=None)
@@ -227,7 +227,7 @@ with tab3:
                                             "환율": fx_rate, "원화금액": int(amt_val * fx_rate)
                                         })
                         
-                        # ② ENSO 시트 처리 (고정 열 추출: H, I, J, K)
+                        # ② ENSO 시트 처리 (H, I, J, K)
                         enso_sheet_key = next((s for s in sheet_names_lower if "enso" in s), None)
                         if enso_sheet_key:
                             df_enso = pd.read_excel(excel_file, sheet_name=sheet_names_lower[enso_sheet_key], header=None)
@@ -269,9 +269,7 @@ with tab3:
                                             "환율": fx_rate, "원화금액": int(amt_val * fx_rate)
                                         })
                         
-                        # ----------------------------------------------------
-                        # ③ 단일 대계 취합 서식 빌드부
-                        # ----------------------------------------------------
+                        # ③ 통합 대장 가공 및 최종합계 셀 빌드
                         if not processed_list:
                             st.warning(f"⚠️ {selected_month_num}월 조건에 부합하는 정산 데이터가 감지되지 않았습니다.")
                         else:
@@ -288,15 +286,17 @@ with tab3:
                                 fmt_th = wb.add_format({'bold': True, 'bg_color': '#D9E1F2', 'border': 1, 'align': 'center'})
                                 fmt_subth = wb.add_format({'bg_color': '#F2F2F2', 'border': 1, 'align': 'center', 'font_size': 9})
                                 
-                                # 기본 데이터 정규 서식
                                 fmt_cell = wb.add_format({'border': 1, 'align': 'center'})
-                                # 🎯 [추가] E25, E26으로 시작하는 ENSO 건 전용 짙은 초록색 글씨 서식
                                 fmt_green_cell = wb.add_format({'border': 1, 'align': 'center', 'font_color': '#006100', 'bold': True})
                                 
                                 fmt_num = wb.add_format({'border': 1, 'num_format': '#,##0'})
                                 fmt_usd = wb.add_format({'border': 1, 'num_format': '#,##0.00'})
                                 fmt_subtotal = wb.add_format({'bg_color': '#FFF2CC', 'bold': True, 'border': 1, 'num_format': '#,##0'})
                                 fmt_subtotal_usd = wb.add_format({'bg_color': '#FFF2CC', 'bold': True, 'border': 1, 'num_format': '#,##0.00'})
+                                
+                                # 🎯 [추가] 최종 총합계 전용 스타일 시트 (연한 주황빛 배경 적용)
+                                fmt_total = wb.add_format({'bg_color': '#FCE4D6', 'bold': True, 'border': 1, 'num_format': '#,##0', 'align': 'center'})
+                                fmt_total_usd = wb.add_format({'bg_color': '#FCE4D6', 'bold': True, 'border': 1, 'num_format': '#,##0.00', 'align': 'center'})
                                 
                                 ws.write(0, 0, f"{target_month.replace('2026년 ', '2026년도 ')} 미정산 외상매입금 현황", fmt_title)
                                 ws.write(3, 1, f"** 회계일자 빨강 표시는 타코마에서 화물 인계일", fmt_memo)
@@ -315,14 +315,11 @@ with tab3:
                                     start_row = row_idx + 1
                                     
                                     for i, (_, item) in enumerate(df_group.iterrows()):
-                                        # E25, E26 시작 여부 검출
                                         lot_no = str(item["LOT No."]).strip()
                                         is_enso = lot_no.upper().startswith("E25") or lot_no.upper().startswith("E26")
                                         
-                                        # 품명 열 기재
                                         ws.write(row_idx, 0, item["품명"] if i == 0 else "", fmt_cell)
                                         
-                                        # LOT No. 열 (ENSO 건일 경우 초록 글씨 포맷 적용)
                                         if is_enso:
                                             ws.write(row_idx, 1, lot_no, fmt_green_cell)
                                         else:
@@ -348,7 +345,7 @@ with tab3:
                                         
                                     row_idx += 1 
                                     
-                                    # 품명 통합형 '단 하나의 대표 소계' 라인 명시
+                                    # 품명 통합형 소계 행
                                     ws.write(row_idx, 0, "", fmt_cell)
                                     ws.write(row_idx, 1, "소       계", wb.add_format({'bg_color': '#FFF2CC', 'bold': True, 'align': 'center', 'border': 1}))
                                     ws.write(row_idx, 2, len(df_group), fmt_cell)
@@ -362,12 +359,28 @@ with tab3:
                                     
                                     row_idx += 1
                                 
+                                # ----------------------------------------------------
+                                # 🎯 [요청 해결] 전체 대장의 모든 소계를 더하는 "총 합 계" 행 빌드
+                                # ----------------------------------------------------
+                                ws.write(row_idx, 0, "", fmt_cell)
+                                ws.write(row_idx, 1, "총   합   계", wb.add_format({'bg_color': '#FCE4D6', 'bold': True, 'align': 'center', 'border': 1}))
+                                
+                                # C열부터 I열까지 중간 소계들만 식별하여 합산하는 SUMIF 수식 자동 주입
+                                # B열의 텍스트가 "소       계"인 로우의 값만 조건부 합산합니다.
+                                ws.write_formula(row_idx, 2, f'=SUMIF(B7:B{row_idx}, "소       계", C7:C{row_idx})', fmt_total)
+                                ws.write_formula(row_idx, 3, f'=SUMIF(B7:B{row_idx}, "소       계", D7:D{row_idx})', fmt_total)
+                                ws.write_formula(row_idx, 4, f'=SUMIF(B7:B{row_idx}, "소       계", E7:E{row_idx})', fmt_total)
+                                ws.write_formula(row_idx, 5, f'=SUMIF(B7:B{row_idx}, "소       계", F7:F{row_idx})', fmt_total)
+                                ws.write_formula(row_idx, 6, f'=SUMIF(B7:B{row_idx}, "소       계", G7:G{row_idx})', fmt_total_usd)
+                                ws.write(row_idx, 7, "", fmt_cell)
+                                ws.write_formula(row_idx, 8, f'=SUMIF(B7:B{row_idx}, "소       계", I7:I{row_idx})', fmt_total)
+                                
                                 ws.set_column('A:B', 16)
                                 ws.set_column('C:C', 13)
                                 ws.set_column('D:F', 11)
                                 ws.set_column('G:I', 16)
                                 
-                            st.success(f"🎯 소계 및 초록색 강조 완료! {target_month} 외상매입금 대장이 정석 포맷에 맞춰 일괄 취합되었습니다.")
+                            st.success(f"🎯 총합계 산정 완료! {target_month} 외상매입금 대장 최하단에 실시간 연동 총합계가 생성되었습니다.")
                             st.download_button(
                                 label="📥 외상매입금 마스터 엑셀 다운로드 (.xlsx)",
                                 data=ap_excel.getvalue(),
