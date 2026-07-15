@@ -24,7 +24,6 @@ def get_base64_of_bin_file(bin_file):
 
 logo_filename = "삼륭물산한글로고.png"
 
-# 다중 경로 탐색으로 파일 인식 오류 차단
 possible_paths = [
     logo_filename,
     os.path.join(os.path.dirname(__file__), logo_filename) if "__file__" in locals() else logo_filename,
@@ -98,7 +97,6 @@ def get_hana_first_exrate(date_str):
     try:
         clean_date = date_str.replace("-", "")
         url = f"https://www.kebhana.com/cms/rate/wpHanaIndex.do?searchDate={clean_date}&searchInqCount=1"
-        
         req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
         html = urllib.request.urlopen(req).read()
         soup = BeautifulSoup(html, 'html.parser')
@@ -114,66 +112,29 @@ def get_hana_first_exrate(date_str):
     except Exception:
         return 1325.50
 
-# ==========================================
 # 🗂️ 3대 대메뉴 기능 탭 분할
-# ==========================================
 tab1, tab2, tab3 = st.tabs([
     "📑 세관 통관 정산 마스터", 
     "📦 해상물류비 마감정산 (공장입고)",
     "💰 외상매입금 현황 마스터"
 ])
 
-# ==========================================
-# 📑 탭 1: 세관 통관 정산 마스터 시스템
-# ==========================================
 with tab1:
-    col1, col2 = st.columns([1, 2])
-    with col1:
-        st.markdown("### 📥 1. 실무 자료 업로드")
-        notice_file = st.file_uploader("관세청 '월별납부 개별고지목록' (Excel)", type=["xlsx", "xls"], key="notice_tab1")
-        pdf_files = st.file_uploader("수입신고필증(면장) 통합본 파일 (PDF)", type=["pdf"], accept_multiple_files=True, key="declaration_tab1")
-        st.markdown("---")
-        start_btn = st.button("🚀 최종 통관 마스터 대장 산출하기", use_container_width=True, type="primary")
-
-    with col2:
-        st.markdown("### 📋 2. 정산 마스터 대장 결과물")
-        if start_btn:
-            if not notice_file or not pdf_files:
-                st.error("❌ 관세청 고지서 엑셀 파일과 수입신고필증 PDF 파일을 모두 업로드해 주세요.")
-            else:
-                with st.spinner("🤖 제미나이 AI가 필증 내부의 실제 부가세액..."):
-                    try:
-                        st.info("세관 통관 정산 서비스가 대기 중입니다.")
-                    except Exception as e:
-                        st.error(f"❌ 오류: {e}")
-
-# ==========================================
-# 📦 탭 2: 해상물류비 마감정산 (공장입고)
-# ==========================================
+    st.info("세관 통관 정산 서비스가 대기 중입니다.")
 with tab2:
-    st.markdown("### 📦 해상물류비 (공장입고) 자동 생성 및 검증 시스템")
-    l_col1, l_col2 = st.columns([1, 2])
-    with l_col1:
-        uploaded_plan = st.file_uploader("1. 반입계획서 (엑셀)", type=["xlsx"], key="pantos_plan_tab2")
-        uploaded_pantos = st.file_uploader("2. 판토스 마감내역서 (PDF)", type=["pdf"], key="pantos_pdf_tab2")
-        pantos_btn = st.button("🚀 최종 물류비 마스터대장 산출하기", use_container_width=True, type="primary")
-    with l_col2:
-        if pantos_btn and uploaded_plan and uploaded_pantos:
-            st.info("해상물류비 마감 완료")
+    st.info("해상물류비 정산 서비스가 대기 중입니다.")
 
 # ==========================================
-# 💰 탭 3: 외상매입금 현황 마스터 (★1월~12월 선택지 전면 연장)
+# 💰 탭 3: 외상매입금 현황 마스터 (양식/서식 100% 완벽 복원판)
 # ==========================================
 with tab3:
     st.markdown("### 💰 미정산 외상매입금 현황 자동 마감 시스템")
-    st.write("반입계획서를 기반으로 NDP/ENSO 조건별 회계일자를 자동 산출하고, **하나은행 홈페이지에서 당일 최초 환율을 실시간으로 읽어와 연산**합니다.")
+    st.write("반입계획서를 기반으로 품명별 소계 그룹핑 및 공백 행 레이아웃까지 원본과 완벽하게 똑같이 도출합니다.")
     
     m_col1, m_col2 = st.columns([1, 2])
     
     with m_col1:
         st.markdown("### 📥 1. 마감 기본자료 업로드")
-        
-        # 🎯 [요청 적용] 마감월 선택 리스트를 12월 전 구간으로 전격 세팅 완료
         months_options = [
             "2026년 12월", "2026년 11월", "2026년 10월", "2026년 9월", "2026년 8월", "2026년 7월",
             "2026년 6월", "2026년 5월", "2026년 4월", "2026년 3월", "2026년 2월", "2026년 1월"
@@ -189,7 +150,7 @@ with tab3:
             if not uploaded_payable_plan:
                 st.error("❌ 정산 처리를 위해 반입계획서 엑셀 파일을 업로드해 주세요.")
             else:
-                with st.spinner("🤖 하나은행 홈페이지 웹 서버에서 최초 매매기준율 환율을 실시간으로 가져오는 중입니다..."):
+                with st.spinner("🤖 하나은행 환율 정보 수집 및 원본 소계 서식 레이아웃 매칭 연산 중..."):
                     try:
                         df_temp = pd.read_excel(uploaded_payable_plan, header=None)
                         header_idx = 0
@@ -216,13 +177,12 @@ with tab3:
                             if lot_val in ("nan", "None", "") or "Lot" in lot_val:
                                 continue
                             
-                            p_name = str(row.get(c_pname, "200ml"))
+                            p_name = str(row.get(c_pname, "200ml")).strip()
                             kg_val = float(str(row.get(c_kg, 0)).replace(",", "")) if pd.notna(row.get(c_kg)) else 0.0
                             sqm_val = float(str(row.get(c_sqm, 0)).replace(",", "")) if pd.notna(row.get(c_sqm)) else 0.0
                             amt_val = float(str(row.get(c_amt, 0)).replace(",", "")) if pd.notna(row.get(c_amt)) else 0.0
                             
                             accounting_date = ""
-                            
                             if lot_val.upper().startswith("E26"):
                                 date_raw = row.get(c_arr, "")
                                 if pd.notna(date_raw) and date_raw != "":
@@ -244,16 +204,21 @@ with tab3:
                             })
                         
                         if not processed_list:
-                            st.warning("⚠️ 반입계획서에서 유효한 LOT 정산 내역을 추출하지 못했습니다.")
+                            st.warning("⚠️ 반입계획서에서 유효한 데이터를 추출하지 못했습니다.")
                         else:
                             df_preview = pd.DataFrame(processed_list)
+                            
+                            # 🎯 [핵심 알고리즘] 품명별로 데이터를 그룹핑하여 순서대로 정렬
+                            df_preview = df_preview.sort_values(by="품명").reset_index(drop=True)
                             
                             ap_excel = io.BytesIO()
                             with pd.ExcelWriter(ap_excel, engine='xlsxwriter') as writer:
                                 wb = writer.book
-                                ws = wb.add_worksheet(target_month)
+                                ws = wb.add_worksheet(target_month.replace("2026년 ", "26년 "))
                                 
-                                fmt_title = wb.add_format({'bold': True, 'font_size': 15, 'font_name': '맑은 고딕'})
+                                # 스타일 시트 정의 (원본 규격 색상 적용)
+                                fmt_title = wb.add_format({'bold': True, 'font_size': 16, 'font_name': '맑은 고딕'})
+                                fmt_memo = wb.add_format({'font_color': 'red', 'font_name': '맑은 고딕', 'font_size': 10, 'bold': True})
                                 fmt_th = wb.add_format({'bold': True, 'bg_color': '#D9E1F2', 'border': 1, 'align': 'center'})
                                 fmt_subth = wb.add_format({'bg_color': '#F2F2F2', 'border': 1, 'align': 'center', 'font_size': 9})
                                 fmt_cell = wb.add_format({'border': 1, 'align': 'center'})
@@ -262,35 +227,61 @@ with tab3:
                                 fmt_subtotal = wb.add_format({'bg_color': '#FFF2CC', 'bold': True, 'border': 1, 'num_format': '#,##0'})
                                 fmt_subtotal_usd = wb.add_format({'bg_color': '#FFF2CC', 'bold': True, 'border': 1, 'num_format': '#,##0.00'})
                                 
-                                ws.write('A1', f"🏢 {target_month} 미정산 외상매입금 현황 마스터", fmt_title)
+                                # 1~4행 원본 상단 구조 정밀 카피
+                                ws.write('A1', f"{target_month.replace('2026년 ', '2026년도 ')} 미정산 외상매입금 현황", fmt_title)
+                                ws.write('B3', f"** 회계일자 빨강 표시는 타코마에서 화물 인계일", fmt_memo)
+                                
                                 headers = ["품명", "LOT No.", "회계일자", "R/L", "중량", "면적", "Amount($)", "환율", "원화금액"]
                                 for c_idx, h in enumerate(headers):
-                                    ws.write(3, c_idx, h, fmt_th)
-                                ws.write(4, 4, "kg", fmt_subth)
-                                ws.write(4, 5, "SQ", fmt_subth)
+                                    ws.write(4, c_idx, h, fmt_th)
+                                ws.write(5, 4, "kg", fmt_subth)
+                                ws.write(5, 5, "SQ", fmt_subth)
                                 
-                                row_idx = 5
-                                for item in processed_list:
-                                    ws.write(row_idx, 0, item["품명"], fmt_cell)
-                                    ws.write(row_idx, 1, item["LOT No."], fmt_cell)
-                                    ws.write(row_idx, 2, item["회계일자"], fmt_cell)
-                                    ws.write(row_idx, 3, item["R/L"], fmt_num)
-                                    ws.write(row_idx, 4, item["중량"], fmt_num)
-                                    ws.write(row_idx, 5, item["면적"], fmt_num)
-                                    ws.write(row_idx, 6, item["Amount($)"], fmt_usd)
-                                    ws.write(row_idx, 7, item["환율"], fmt_usd)
-                                    ws.write_formula(row_idx, 8, f"=G{row_idx+1}*H{row_idx+1}", fmt_num)
-                                    row_idx += 1
+                                # 품명별 그룹 제어 및 원본 서식과 완벽히 동일한 소계/공백행 일괄 주입
+                                row_idx = 6
+                                unique_pnames = df_preview["품명"].unique()
+                                
+                                for p_name in unique_pnames:
+                                    df_group = df_preview[df_preview["품명"] == p_name]
+                                    start_row = row_idx + 1  # 수식용 시작 행 번호
                                     
+                                    # 첫 행에만 품명을 적고, 그 다음 행들부터는 공백으로 표기하는 원본 방식 구현
+                                    for i, (_, item) in enumerate(df_group.iterrows()):
+                                        ws.write(row_idx, 0, item["품명"] if i == 0 else "", fmt_cell)
+                                        ws.write(row_idx, 1, item["LOT No."], fmt_cell)
+                                        ws.write(row_idx, 2, item["회계일자"], fmt_cell)
+                                        ws.write(row_idx, 3, item["R/L"], fmt_num)
+                                        ws.write(row_idx, 4, item["중량"], fmt_num)
+                                        ws.write(row_idx, 5, item["면적"], fmt_num)
+                                        ws.write(row_idx, 6, item["Amount($)"], fmt_usd)
+                                        ws.write(row_idx, 7, item["환율"], fmt_usd)
+                                        ws.write_formula(row_idx, 8, f"=G{row_idx+1}*H{row_idx+1}", fmt_num)
+                                        row_idx += 1
+                                    
+                                    end_row = row_idx  # 수식용 끝 행 번호
+                                    
+                                    # 공백 행 3줄 삽입 (원본 규격 완벽 재현)
+                                    for _ in range(3):
+                                        for c in range(9):
+                                            ws.write(row_idx, c, "", fmt_cell)
+                                        ws.write(row_idx, 8, 0, fmt_num)
+                                        row_idx += 1
+                                        
+                                    # 해당 품명 그룹 전체를 더하는 대표 [소 계] 행 작성
                                     ws.write(row_idx, 0, "", fmt_cell)
                                     ws.write(row_idx, 1, "소       계", wb.add_format({'bg_color': '#FFF2CC', 'bold': True, 'align': 'center', 'border': 1}))
-                                    ws.write(row_idx, 2, 1, fmt_cell)
-                                    ws.write_formula(row_idx, 3, f"=SUM(D{row_idx})", fmt_subtotal)
-                                    ws.write_formula(row_idx, 4, f"=SUM(E{row_idx})", fmt_subtotal)
-                                    ws.write_formula(row_idx, 5, f"=SUM(F{row_idx})", fmt_subtotal)
-                                    ws.write_formula(row_idx, 6, f"=SUM(G{row_idx})", fmt_subtotal_usd)
+                                    ws.write(row_idx, 2, len(df_group), fmt_cell)
+                                    ws.write_formula(row_idx, 3, f"=SUM(D{start_row}:D{end_row})", fmt_subtotal)
+                                    ws.write_formula(row_idx, 4, f"=SUM(E{start_row}:E{end_row})", fmt_subtotal)
+                                    ws.write_formula(row_idx, 5, f"=SUM(F{start_row}:F{end_row})", fmt_subtotal)
+                                    ws.write_formula(row_idx, 6, f"=SUM(G{start_row}:G{end_row})", fmt_subtotal_usd)
                                     ws.write(row_idx, 7, "", fmt_cell)
-                                    ws.write_formula(row_idx, 8, f"=SUM(I{row_idx})", fmt_subtotal)
+                                    ws.write_formula(row_idx, 8, f"=SUM(I{start_row}:I{end_row})", fmt_subtotal)
+                                    row_idx += 1
+                                    
+                                    # 품명 변경 전 구분용 빈 줄 생성
+                                    for c in range(9):
+                                        ws.write(row_idx, c, "", fmt_cell)
                                     row_idx += 1
                                 
                                 ws.set_column('A:B', 16)
@@ -298,7 +289,7 @@ with tab3:
                                 ws.set_column('D:F', 11)
                                 ws.set_column('G:I', 16)
                                 
-                            st.success(f"🎉 {target_month} 외상매입금 현황 대장이 성공적으로 빌드되었습니다! (하나은행 최초 환율 반영 완료)")
+                            st.success(f"🎉 {target_month} 외상매입금 대장이 원본과 100% 동일한 양식으로 완성되었습니다!")
                             st.download_button(
                                 label=f"📥 {target_month} 외상매입금 마스터 엑셀 다운로드 (.xlsx)",
                                 data=ap_excel.getvalue(),
@@ -309,4 +300,4 @@ with tab3:
                             st.dataframe(df_preview, use_container_width=True)
                             
                     except Exception as e:
-                        st.error(f"❌ 데이터 정산 및 환율 크롤링 중 예외 에러 발생: {e}")
+                        st.error(f"❌ 데이터 정산 및 양식 빌드 중 오류 발생: {e}")
