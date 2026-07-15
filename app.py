@@ -13,7 +13,7 @@ import re
 # 웹사이트 설정 및 디자인 (넓은 화면 모드)
 st.set_page_config(layout="wide", page_title="삼륭물산 구매무역팀 마감 포털")
 
-# 🖼️ [워터마크 엔진] 깃허브 저장소에 업로드된 PNG 파일을 읽어서 CSS 배경으로 주입
+# 🖼️ [워터마크 엔진 - 크기 10% 축소 및 하단 가운데 배치로 대폭 개선]
 def get_base64_of_bin_file(bin_file):
     with open(bin_file, 'rb') as f:
         data = f.read()
@@ -27,15 +27,16 @@ if os.path.exists(logo_filename):
     <style>
     .stApp {{
         background-image: url("data:image/png;base64,{bin_str}");
-        background-size: 55%; 
+        background-size: 45%; /* 기존 55%에서 약 10% 축소하여 45%로 최적화 */
         background-repeat: no-repeat;
-        background-position: center center;
+        background-position: center bottom 20px; /* 중앙에서 하단 가운데로 이동 (하단에서 20px 띄움) */
         background-attachment: fixed;
     }}
     .block-container {{
-        background-color: rgba(255, 255, 255, 0.65);
+        background-color: rgba(255, 255, 255, 0.75); /* 글씨가 더 잘 보이도록 배경 불투명도를 살짝 높임 */
         border-radius: 12px;
         padding: 30px !important;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
     }}
     </style>
     '''
@@ -73,7 +74,7 @@ st.markdown("<hr style='margin-top: 5px; margin-bottom: 25px; border-top: 1px so
 GEMINI_API_KEY = "AQ.Ab8RN6Le_B-K4XsTTGDe6Ny00O4JgZnb2uv2_xCKxpw6X0a_VQ"
 
 # ==========================================
-# 🗂️ [핵심 설계] 시스템 구분을 위한 탭 분할
+# 🗂️ 시스템 구분을 위한 탭 분할
 # ==========================================
 tab1, tab2 = st.tabs(["📑 세관 통관 정산 마스터", "📦 해상물류비 마감정산 (공장입고)"])
 
@@ -101,9 +102,6 @@ with tab1:
         
         st.markdown("---")
         start_btn = st.button("🚀 최종 통관 마스터 대장 산출하기", use_container_width=True, type="primary")
-        
-        if not os.path.exists(logo_filename):
-            st.info("💡 '삼륭물산한글로고.png' 파일을 app.py와 같은 폴더에 업로드하시면 배경 워터마크 로고가 활성화됩니다.")
 
     with col2:
         st.markdown("### 📋 2. 정산 마스터 대장 결과물")
@@ -153,7 +151,7 @@ with tab1:
                         
                         [필증 총액 스캔 규칙 - 필수 준수]
                         1. 다란 건 총합산: 하나의 수입신고번호 면장이 여러 개의 '란'으로 구성되어 분할 표기된 경우, 반드시 해당 신고번호 하위의 모든 '란'의 결제금액(USD)을 누락 없이 전부 더하여(총합산) 하나의 대표 객체로 출력해야 합니다.
-                        2. usd_amount (결제금액): 소수점 이하 자리(센트 단위)가 존재한다면 절대로 자르거나 반올림하지 마십시오. 소수점 둘째 자리까지의 원래의 값을 완벽한 소수(Float)로 추출하십시오. (예: 137048.18)
+                        2. usd_amount (결제금액): 소수점 이하 자리(센트 단위)가 존재한다면 자르거나 반올림하지 마십시오. 소수점 둘째 자리까지의 원래의 값을 완벽한 소수(Float)로 추출하십시오. (예: 137048.18)
                         3. freight (⑤⑦ 운임) & insurance (⑤⑧ 보험료): 
                            - 개별 란의 쪼개진 금액이 아니라, 필증 맨 아래의 결산 총액 기재란에 적힌 해당 건의 '총 운임' 및 '총 보험료' KRW 금액을 추출하십시오. 없으면 0으로 명시하십시오.
                         
@@ -376,7 +374,6 @@ with tab2:
     st.markdown("### 📦 해상물류비 (공장입고) 자동 생성 및 검증 시스템")
     st.write("마감내역서(PDF) 청구 건을 기준으로 반입계획서와 매칭하여 100% 동일한 엑셀을 만들고, **분기 계약 단가와 일치하는지 자동 검증(Audit)**합니다.")
 
-    # 탭2 전용 업로드 분할 레이아웃
     l_col1, l_col2 = st.columns([1, 2])
 
     with l_col1:
@@ -393,7 +390,6 @@ with tab2:
         STANDARD_TRUCKING_RATE = 699000
         BASE_CPT_RATE = 120.30
 
-        # 분기 계약 단가표
         CONTRACT_RATES = {
             "OCEAN FREIGHT": 200,
             "WHARFAGE": 9504,
@@ -522,7 +518,6 @@ with tab2:
 
             return lots, order
 
-        # 판토스 연산 실행 버튼 동작부
         if pantos_btn:
             if not uploaded_plan or not uploaded_pantos:
                 st.error("❌ 반입계획서와 마감내역서를 모두 업로드해 주세요.")
@@ -566,7 +561,7 @@ with tab2:
 
                     results = []
                     notes = []
-                    total_kg = 0 # 전역 변수 에러 가드
+                    total_kg = 0 
                     
                     for pdf_ref in pdf_order:
                         d = pdf_lots[pdf_ref]
@@ -668,7 +663,6 @@ with tab2:
                         if abs(calculated_total - pdf_total) > 10:
                             notes.append(f"❌ [{raw_order}]: 총액 불일치 (시스템산출: {calculated_total:,.0f}원 vs PDF청구: {pdf_total:,.0f}원)")
 
-                    # FCA 역산 로직
                     total_ocean_usd = sum([r[13] for r in results])
                     total_ocean_krw = sum([r[13] * r[12] for r in results])
                     total_kg = sum([r[5] for r in results])
@@ -689,7 +683,6 @@ with tab2:
                         out[37] = out[35] * out[12] 
                         out[38] = out[37] - out[36] 
 
-                    # 요약 통계 출력 (디자인 통일)
                     total_orders = len(results)
                     total_qty = sum([r[32] for r in results])
 
@@ -706,7 +699,6 @@ with tab2:
                     sum_col6.metric("💰 총 청구 금액 (Total)", f"{total_amount_krw:,.0f} 원")
                     st.write("---")
 
-                    # 에러 및 특이사항 출력 (동료분 코드 내의 변수 꼬임 에러 완전 수정!)
                     st.subheader("💡 정산 특이사항 및 단가 검증(Audit) 경고판")
                     if notes:
                         unique_notes = list(set(notes))
@@ -720,7 +712,6 @@ with tab2:
                     else:
                         st.success("🎉 모든 건이 분기 계약 단가와 100% 일치하며 완벽하게 정산되었습니다!")
 
-                    # 엑셀 파일 작성 및 다운로드
                     headers_row1 = [
                         "NO.", "Lot (서류발송)", "선적일", "입항일", "ROLL", "kg", "SQM", "외화물품대", "발주월", "공장입고", "통관",
                         "해상운임", "", "", "", "", "", "", "", "", "", "",
@@ -831,7 +822,6 @@ with tab2:
                         worksheet.set_column(39, 39, 3)
                         worksheet.set_column(40, 41, 15)
 
-                        # 시트 2: 검증 리포트 시트 작성
                         worksheet_audit = workbook.add_worksheet("검증_리포트")
                         
                         fmt_audit_title = workbook.add_format({'bold': True, 'valign': 'vcenter', 'bg_color': '#FFC000', 'border': 1, 'font_size': 12})
@@ -861,4 +851,4 @@ with tab2:
                         use_container_width=True
                     )
         else:
-            st.info("💡 1. 반입계획서(엑셀)와 2. 마감내역서(PDF)를 순서대로 올려주신 뒤 산출하기 버튼을 눌러주세요.")
+            st.info("💡 1. 반입계획서(엑셀)와 2. 마감내역서(PDF)를 올린 뒤 산출하기 버튼을 눌러주세요.")
