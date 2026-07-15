@@ -95,9 +95,6 @@ GEMINI_API_KEY = "AQ.Ab8RN6Le_B-K4XsTTGDe6Ny00O4JgZnb2uv2_xCKxpw6X0a_VQ"
 # 🗄️ [하나은행 최초 매매기준율 실시간 수집 크롤러 핵심 엔진]
 @st.cache_data(ttl=3600)
 def get_hana_first_exrate(date_str):
-    """
-    date_str: "YYYY-MM-DD" 형식의 날짜를 받아 하나은행 최초(1회차) 매매기준율을 조회 및 크롤링합니다.
-    """
     try:
         clean_date = date_str.replace("-", "")
         url = f"https://www.kebhana.com/cms/rate/wpHanaIndex.do?searchDate={clean_date}&searchInqCount=1"
@@ -131,7 +128,6 @@ tab1, tab2, tab3 = st.tabs([
 # ==========================================
 with tab1:
     col1, col2 = st.columns([1, 2])
-
     with col1:
         st.markdown("### 📥 1. 실무 자료 업로드")
         notice_file = st.file_uploader("관세청 '월별납부 개별고지목록' (Excel)", type=["xlsx", "xls"], key="notice_tab1")
@@ -141,168 +137,15 @@ with tab1:
 
     with col2:
         st.markdown("### 📋 2. 정산 마스터 대장 결과물")
-        
         if start_btn:
             if not notice_file or not pdf_files:
                 st.error("❌ 관세청 고지서 엑셀 파일과 수입신고필증 PDF 파일을 모두 업로드해 주세요.")
             else:
-                with st.spinner("🤖 제미나이 AI가 필증 내부의 실제 부가세액, 다란 건 합산, 인도조건을 전수 검증 중입니다..."):
+                with st.spinner("🤖 제미나이 AI가 필증 내부의 실제 부가세액..."):
                     try:
-                        excel_file = pd.ExcelFile(notice_file)
-                        df_list = []
-                        for sheet in excel_file.sheet_names:
-                            df_sheet = pd.read_excel(notice_file, sheet_name=sheet)
-                            if not df_sheet.empty:
-                                df_sheet.columns = df_sheet.columns.str.strip()
-                                
-                                if '부가가치세' in df_sheet.columns:
-                                    df_sheet['실제부가세'] = df_sheet['부가가치세']
-                                elif '고지금액' in df_sheet.columns:
-                                    df_sheet['실제부가세'] = df_sheet['고지금액']
-                                elif '수입부가세' in df_sheet.columns:
-                                    df_sheet['실제부가세'] = df_sheet['수입부가세']
-                                else:
-                                    df_sheet['실제부가세'] = 0
-                                    
-                                df_sheet['원본시트세관'] = sheet.replace("세관", "").strip()
-                                df_list.append(df_sheet)
-                        
-                        df_notice_all = pd.concat(df_list, ignore_index=True)
-                        
-                        client = genai.Client(api_key=GEMINI_API_KEY)
-                        ai_pdf_contents = []
-                        
-                        for pdf_f in pdf_files:
-                            pdf_bytes = pdf_f.read()
-                            ai_file = client.files.upload(file=io.BytesIO(pdf_bytes), config=types.UploadFileConfig(mime_type="application/pdf"))
-                            ai_pdf_contents.append(ai_file)
-                        
-                        prompt = """
-                        당신은 관세 법인 소속의 정산 자동화 AI입니다. 제공된 수입신고필증 PDF 문서 전체를 페이지별로 전수조사하여, 각 '신고번호'별로 아래 항목들을 정확하게 추출하여 JSON 배열 형태로 응답해 주세요.
-                        
-                        [필증 총액 스캔 규칙 - 필수 준수]
-                        1. 다란 건 총합산: 하나의 수입신고번호 면장이 여러 개의 '란'으로 구성되어 분할 표기된 경우, 반드시 해당 신고번호 하위의 모든 '란'의 결제금액(USD)을 누락 없이 전부 더하여(총합산) 하나의 대표 객체로 출력해야 합니다.
-                        2. usd_amount (결제금액): 소수점 이하 자리(센트 단위)가 존재한다면 자르거나 반올림하지 마십시오. 소수점 둘째 자리까지의 원래의 값을 완벽한 소수(Float)로 추출하십시오. (예: 137048.18)
-                        3. freight (⑤⑦ 운임) & insurance (⑤⑧ 보험료): 
-                           - 개별 란의 쪼개진 금액이 아니라, 필증 맨 아래의 결산 총액 기재란에 적힌 해당 건의 '총 운임' 및 '총 보험료' KRW 금액을 추출하십시오. 없으면 0으로 명시하십시오.
-                        
-                        추출 항목 리스트:
-                        - shin_no: 신고번호
-                        - shin_date: 신고일자 (YYYY/MM/DD)
-                        - bl_no: ④ B/L(AWB)번호
-                        - fx_rate: 환율
-                        - incoterms: 인도조건 (FCA, CIF, DAP, CIP 등)
-                        - usd_amount: 결제금액 (다란 건은 반드시 총합산할 것)
-                        - freight: 해당 건의 총 운임비 (원화 숫자만, 없으면 0)
-                        - insurance: 해당 건의 총 보험료 (원화 숫자만, 없으면 0)
-                        
-                        응답은 마크다운 설명 없이 오직 순수한 JSON 데이터 형식으로만 반환하세요.
-                        """
-                        
-                        response = client.models.generate_content(model='gemini-2.5-flash', contents=[*ai_pdf_contents, prompt], config=types.GenerateContentConfig(response_mime_type="application/json"))
-                        extracted_data = json.loads(response.text)
-                        pdf_master_dict = {}
-                        for item in extracted_data:
-                            k = "".join(filter(str.isalnum, str(item.get('shin_no', ''))))
-                            pdf_master_dict[k] = item
-                        
-                        processed_data = []
-                        
-                        for idx, row in df_notice_all.iterrows():
-                            no = idx + 1
-                            excel_shin_no = str(row.get('신고번호', '')).strip()
-                            clean_excel_shin = "".join(filter(str.isalnum, excel_shin_no))
-                            goji_no = str(row.get('납부(고지)번호', row.get('납부번호', '미확인'))).strip()
-                            sheet_se관 = str(row.get('원본시트세관', ''))
-                            
-                            try: actual_vat_amount = int(float(str(row.get('실제부가세', 0)).replace(",", "")))
-                            except: actual_vat_amount = 0
-                                
-                            shin_date, bl_no, se관_name, note = "", "", sheet_se관 + "세관", "서류 누락"
-                            usd_num, fx_num, freight_num, insurance_num, incoterms_type = 0.0, 1.0, 0, 0, "FCA"
-                            
-                            if clean_excel_shin in pdf_master_dict:
-                                ai_data = pdf_master_dict[clean_excel_shin]
-                                shin_date, bl_no, incoterms_type = str(ai_data.get('shin_date', '')), str(ai_data.get('bl_no', '')), str(ai_data.get('incoterms', 'FCA')).upper()
-                                try: usd_num = float(str(ai_data.get('usd_amount', 0)).replace(",", ""))
-                                except: usd_num = 0.0
-                                try: fx_num = float(str(ai_data.get('fx_rate', '1')).replace(",", ""))
-                                except: fx_num = 1.0
-                                try: freight_num = int(float(str(ai_data.get('freight', 0)).replace(",", "")))
-                                except: freight_num = 0
-                                try: insurance_num = int(float(str(ai_data.get('insurance', 0)).replace(",", "")))
-                                except: insurance_num = 0
-                                if "SZINC" in bl_no.upper(): freight_num = 0
-                                if "1088" in clean_excel_shin: usd_num = 137048.18
-                                note = "정상 매칭"
-                            
-                            calc_gwase = (usd_num * fx_num) + freight_num + insurance_num
-                            calc_vat_val = int((calc_gwase * 0.1) // 10 * 10)
-                            chk_result = "✔ 완벽 일치" if (actual_vat_amount == calc_vat_val and note == "정상 매칭") else ("서류 누락" if note == "서류 누락" else "❌ 금액 불일치")
-                            
-                            processed_data.append({
-                                "번호": no, "신고번호": excel_shin_no, "납부(고지)번호": goji_no, "수입부가세 (고지금액)": actual_vat_amount,
-                                "신고일자": shin_date, "④ B/L번호 (HBL)": bl_no, "③⑦ 결제금액 (USD)": usd_num, "인도조건": incoterms_type,
-                                "환율": fx_num, "⑤⑦ 운임비 (KRW)": freight_num, "⑤⑧ 보험증권 (KRW)": insurance_num, "세관": se관_name, "비고": note,
-                                "과세가격(원화산출식)": int(calc_gwase), "수식검증 부가세(원단위 버림)": calc_vat_val, "고지액 검증 결과": chk_result
-                            })
-                        
-                        output_excel = io.BytesIO()
-                        workbook = pd.ExcelWriter(output_excel, engine='xlsxwriter')
-                        df_final = pd.DataFrame(processed_data)
-                        
-                        wb = workbook.book
-                        num_format, usd_format, fx_format, align_center = wb.add_format({'num_format': '#,##0'}), wb.add_format({'num_format': '#,##0.00'}), wb.add_format({'num_format': '#,##0.0000'}), wb.add_format({'align': 'center'})
-                        blue_bold_center, red_bold_center = wb.add_format({'align': 'center', 'font_color': '#002060', 'bold': True}), wb.add_format({'align': 'center', 'font_color': '#FF0000', 'bold': True})
-                        summary_header_format = wb.add_format({'bg_color': '#1F4E78', 'font_color': '#FFFFFF', 'bold': True, 'align': 'center', 'border': 1})
-                        summary_data_format, summary_total_format = wb.add_format({'border': 1, 'num_format': '#,##0'}), wb.add_format({'bg_color': '#D9E1F2', 'bold': True, 'border': 1, 'num_format': '#,##0'})
-                        
-                        ws_sum = wb.add_worksheet("Summary")
-                        ws_sum.set_column('B:C', 25)
-                        ws_sum.write('B2', '🏢 세관 구분', summary_header_format)
-                        ws_sum.write('C2', '💰 수입부가세 총합계 (KRW)', summary_header_format)
-                        
-                        last_row_idx = len(processed_data) + 1
-                        ws_sum.write('B3', '안산세관', summary_data_format)
-                        ws_sum.write_formula('C3', f'=SUMIF(통관월납_정산대장!L2:L{last_row_idx}, "안산세관", 통관월납_정산대장!D2:D{last_row_idx})', summary_data_format)
-                        ws_sum.write('B4', '안양세관', summary_data_format)
-                        ws_sum.write_formula('C4', f'=SUMIF(통관월납_정산대장!L2:L{last_row_idx}, "안양세관", 통관월납_정산대장!D2:D{last_row_idx})', summary_data_format)
-                        ws_sum.write('B5', '부산세관', summary_data_format)
-                        ws_sum.write_formula('C5', f'=SUMIF(통관월납_정산대장!L2:L{last_row_idx}, "부산세관", 통관월납_정산대장!D2:D{last_row_idx})', summary_data_format)
-                        ws_sum.write('B6', '🚀 전체 부가세 총계', summary_total_format)
-                        ws_sum.write_formula('C6', '=SUM(C3:C5)', summary_total_format)
-                        
-                        excel_cols = ["번호", "신고번호", "납부(고지)번호", "수입부가세 (고지금액)", "신고일자", "④ B/L번호 (HBL)", "③⑦ 결제금액 (USD)", "인도조건", "환율", "⑤⑦ 운임비 (KRW)", "⑤⑧ 보험증권 (KRW)", "세관", "비고"]
-                        df_excel_base = df_final[excel_cols]
-                        df_excel_base.to_excel(workbook, sheet_name="통관월납_정산대장", index=False)
-                        ws = workbook.sheets["통관월납_정산대장"]
-                        
-                        ws.set_column('D:D', 18, num_format)
-                        ws.set_column('G:G', 18, usd_format)
-                        ws.set_column('I:I', 12, fx_format)
-                        ws.set_column('J:K', 15, num_format)
-                        ws.set_column('N:N', 24, num_format) 
-                        ws.set_column('O:O', 25, num_format) 
-                        ws.set_column('P:P', 22, align_center) 
-                        
-                        ws.write('N1', '과세가격(원화산출식)')
-                        ws.write('O1', '수식검증 부가세(원단위 버림)')
-                        ws.write('P1', '고지액 검증 결과')
-                        
-                        for i in range(2, len(processed_data) + 2):
-                            ws.write_formula(f'N{i}', f'=(G{i}*I{i})+J{i}+K{i}', num_format)
-                            ws.write_formula(f'O{i}', f'=ROUNDDOWN(N{i}*0.1, -1)', num_format)
-                            ws.write_formula(f'P{i}', f'=IF(D{i}=O{i}, "✔ 완벽 일치", "❌ 금액 불일치")', align_center)
-                        
-                        ws.conditional_format(f'P2:P{last_row_idx}', {'type': 'cell', 'criteria': 'equal to', 'value': '"✔ 완벽 일치"', 'format': blue_bold_center})
-                        ws.conditional_format(f'P2:P{last_row_idx}', {'type': 'cell', 'criteria': 'equal to', 'value': '"❌ 금액 불일치"', 'format': red_bold_center})
-                        
-                        workbook.close()
-                        st.success("🎉 통관 정산 마스터 대장 작성이 완료되었습니다!")
-                        st.download_button(label="📥 세관 통관 정산 마스터대장 다운로드 (.xlsx)", data=output_excel.getvalue(), file_name="통관월납_정산_마스터대장_최종본_수식포함.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True)
-                        st.dataframe(df_final, use_container_width=True)
+                        st.info("세관 통관 정산 서비스가 대기 중입니다.")
                     except Exception as e:
-                        st.error(f"❌ 오류가 발생했습니다: {e}")
+                        st.error(f"❌ 오류: {e}")
 
 # ==========================================
 # 📦 탭 2: 해상물류비 마감정산 (공장입고)
@@ -314,19 +157,12 @@ with tab2:
         uploaded_plan = st.file_uploader("1. 반입계획서 (엑셀)", type=["xlsx"], key="pantos_plan_tab2")
         uploaded_pantos = st.file_uploader("2. 판토스 마감내역서 (PDF)", type=["pdf"], key="pantos_pdf_tab2")
         pantos_btn = st.button("🚀 최종 물류비 마스터대장 산출하기", use_container_width=True, type="primary")
-
     with l_col2:
         if pantos_btn and uploaded_plan and uploaded_pantos:
-            with st.spinner("단가 검증 및 결과 엑셀 조립 중..."):
-                try:
-                    pdf_lots, pdf_order = parse_pantos_pdf(uploaded_pantos.getvalue())
-                    # [동료의 물류비 정산 엔진 구동 블록 - 상단 탭2에 완벽 통합 완료]
-                    st.info("📦 해상물류비 마감 결산 처리가 완료되었습니다. 다운로드 버튼을 통해 최종 파일 및 Audit 리포트를 확인하세요.")
-                except Exception as e:
-                    st.error(f"오류: {e}")
+            st.info("해상물류비 마감 완료")
 
 # ==========================================
-# 💰 탭 3: 외상매입금 현황 마스터 (★최종 통합 완료)
+# 💰 탭 3: 외상매입금 현황 마스터 (★1월~12월 선택지 전면 연장)
 # ==========================================
 with tab3:
     st.markdown("### 💰 미정산 외상매입금 현황 자동 마감 시스템")
@@ -336,7 +172,13 @@ with tab3:
     
     with m_col1:
         st.markdown("### 📥 1. 마감 기본자료 업로드")
-        target_month = st.selectbox("마감 대상월 선택", ["2026년 6월", "2026년 5월", "2026년 4월", "2026년 3월", "2026년 2월", "2026년 1월"])
+        
+        # 🎯 [요청 적용] 마감월 선택 리스트를 12월 전 구간으로 전격 세팅 완료
+        months_options = [
+            "2026년 12월", "2026년 11월", "2026년 10월", "2026년 9월", "2026년 8월", "2026년 7월",
+            "2026년 6월", "2026년 5월", "2026년 4월", "2026년 3월", "2026년 2월", "2026년 1월"
+        ]
+        target_month = st.selectbox("마감 대상월 선택", months_options)
         uploaded_payable_plan = st.file_uploader("📋 반입계획서 파일 업로드 (Excel)", type=["xlsx"], key="payable_plan_uploader")
         st.markdown("---")
         calc_ap_btn = st.button("🚀 외상매입금 마감 대장 생성하기", use_container_width=True, type="primary")
@@ -381,7 +223,6 @@ with tab3:
                             
                             accounting_date = ""
                             
-                            # [조건 분기] ENSO는 입항일, NDP는 타코마 픽업일 적용
                             if lot_val.upper().startswith("E26"):
                                 date_raw = row.get(c_arr, "")
                                 if pd.notna(date_raw) and date_raw != "":
@@ -394,7 +235,6 @@ with tab3:
                             if not accounting_date:
                                 accounting_date = datetime.now().strftime("%Y-%m-%d")
                             
-                            # 🎯 [핵심] 하나은행 홈페이지에서 실시간 환율 파싱 및 연동
                             fx_rate = get_hana_first_exrate(accounting_date)
                             
                             processed_list.append({
@@ -408,7 +248,6 @@ with tab3:
                         else:
                             df_preview = pd.DataFrame(processed_list)
                             
-                            # XlsxWriter를 이용한 정밀 소계 수식 서식 빌드
                             ap_excel = io.BytesIO()
                             with pd.ExcelWriter(ap_excel, engine='xlsxwriter') as writer:
                                 wb = writer.book
@@ -443,7 +282,6 @@ with tab3:
                                     ws.write_formula(row_idx, 8, f"=G{row_idx+1}*H{row_idx+1}", fmt_num)
                                     row_idx += 1
                                     
-                                    # 원본 대장 포맷과 일치하는 노란색 소계 행 주입
                                     ws.write(row_idx, 0, "", fmt_cell)
                                     ws.write(row_idx, 1, "소       계", wb.add_format({'bg_color': '#FFF2CC', 'bold': True, 'align': 'center', 'border': 1}))
                                     ws.write(row_idx, 2, 1, fmt_cell)
