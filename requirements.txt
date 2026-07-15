@@ -1,4 +1,6 @@
 streamlit
-google-genai
-xlsxwriter
+pandas
+pdfplumber
 openpyxl
+xlsxwriter
+google-genai
