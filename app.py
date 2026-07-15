@@ -301,7 +301,9 @@ with tab1:
                                 
                                 try:
                                     usd_num = float(str(ai_data.get('usd_amount', 0)).replace(",", ""))
-                                lock_cents = False
+                                except:
+                                    usd_num = 0.0
+                                
                                 try:
                                     fx_num = float(str(ai_data.get('fx_rate', '1')).replace(",", ""))
                                 except:
@@ -454,7 +456,7 @@ with tab1:
 # ------------------------------------------
 with tab2:
     st.markdown("### 📦 해상물류비 마감정산 및 단가 감사 시스템")
-    st.write("판토스 등 물류사의 마감내역서와 내부 반입계획서를 대조하여 청구 운임 단가 및 물동량의 일치 여부를 자동으로 검증합니다.")
+    st.write("판토스 등 물류사의 마감내역서 and 내부 반입계획서를 대조하여 청구 운임 단가 및 물동량의 일치 여부를 자동으로 검증합니다.")
     
     l_col1, l_col2 = st.columns([1, 2])
     with l_col1:
