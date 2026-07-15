@@ -13,11 +13,11 @@ import re
 # 웹사이트 설정 및 디자인 (넓은 화면 모드)
 st.set_page_config(layout="wide", page_title="삼륭물산 구매무역팀 마감 포털")
 
-# 🖼️ [워터마크 엔진 - 최하단 고정을 위한 깃허브 경로 안전 연동식]
+# 🖼️ [워터마크 엔진 - 파일 연동 및 선명도 업그레이드]
 logo_filename = "삼륭물산한글로고.png"
 bin_str = ""
 
-# 깃허브 서버의 현재 작업 폴더 경로 및 상위 폴더까지 샅샅이 뒤져서 파일을 안전하게 읽어옴
+# 깃허브 서버 내의 경로를 순회하며 파일을 안전하게 감지
 possible_paths = [
     logo_filename,
     os.path.join(os.path.dirname(__file__), logo_filename) if "__file__" in locals() else logo_filename,
@@ -33,14 +33,14 @@ for p in possible_paths:
         except Exception:
             pass
 
-# 본문 영역을 깨끗하게 보장하고 가독성을 높임
+# 본문 배경을 하얗게 정리하여 가독성 100% 보장
 page_style = '''
 <style>
 .block-container {
-    background-color: rgba(255, 255, 255, 0.9);
+    background-color: rgba(255, 255, 255, 0.95);
     border-radius: 12px;
     padding: 30px !important;
-    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.02);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.03);
 }
 </style>
 '''
@@ -76,6 +76,21 @@ st.markdown("<hr style='margin-top: 5px; margin-bottom: 25px; border-top: 1px so
 
 # 🔑 구글 제미나이 API 키 고정 (통관 탭용)
 GEMINI_API_KEY = "AQ.Ab8RN6Le_B-K4XsTTGDe6Ny00O4JgZnb2uv2_xCKxpw6X0a_VQ"
+
+# 로고를 결과창 바로 직하단에 표기해주기 위한 템플릿 함수 (크고 선명하게 최적화)
+def display_centered_logo():
+    if bin_str:
+        st.markdown(
+            f"""
+            <div style="text-align: center; margin-top: 35px; margin-bottom: 15px; padding-top: 25px; border-top: 1px dashed #e0e0e0;">
+                <img src="data:image/png;base64,{bin_str}" style="width: 40%; max-width: 320px; opacity: 0.65;">
+                <p style="font-size: 11px; color: #888; font-family: 'Malgun Gothic', sans-serif; margin-top: 8px; font-weight: bold; letter-spacing: 1px;">
+                    삼륭물산주식회사 구매무역팀 ERP SYSTEM
+                </p>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
 
 # ==========================================
 # 🗂️ 시스템 구분을 위한 탭 분할
@@ -151,7 +166,7 @@ with tab1:
                             ai_pdf_contents.append(ai_file)
                         
                         prompt = """
-                        당신은 관세 법인 소속의 정산 자동화 AI입니다. 제공된 수입신고필증 PDF 문서 전체를 페이지별로 전수조사하여, 각 '신고번호'별로 아래 항목들을 정확하게 추출하여 JSON 배열 형태로 응답해 주세요.
+                        당신은 관세 법인 소속 of 정산 자동화 AI입니다. 제공된 수입신고필증 PDF 문서 전체를 페이지별로 전수조사하여, 각 '신고번호'별로 아래 항목들을 정확하게 추출하여 JSON 배열 형태로 응답해 주세요.
                         
                         [필증 총액 스캔 규칙 - 필수 준수]
                         1. 다란 건 총합산: 하나의 수입신고번호 면장이 여러 개의 '란'으로 구성되어 분할 표기된 경우, 반드시 해당 신고번호 하위의 모든 '란'의 결제금액(USD)을 누락 없이 전부 더하여(총합산) 하나의 대표 객체로 출력해야 합니다.
@@ -367,6 +382,9 @@ with tab1:
                             use_container_width=True
                         )
                         st.dataframe(df_final, use_container_width=True)
+                        
+                        # 🛠️ [요청 적용] 통관 탭 정산 결과 테이블(st.dataframe) 바로 직하단에 로고 정렬
+                        display_centered_logo()
                         
                     except Exception as e:
                         st.error(f"❌ 가독성 양식 업그레이드 중 오류가 발생했습니다: {e}")
@@ -854,26 +872,8 @@ with tab2:
                         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                         use_container_width=True
                     )
+                    
+                    # 🛠️ [요청 적용] 물류비 탭 정산 완료 후 다운로드 버튼 바로 직하단에 로고 정렬
+                    display_centered_logo()
         else:
             st.info("💡 1. 반입계획서(엑셀)와 2. 마감내역서(PDF)를 올린 뒤 산출하기 버튼을 눌러주세요.")
-
-# ==========================================
-# 🖼️ [FOOTER AREA - 완벽하게 페이지 최하단 바닥 정중앙에 고정]
-# ==========================================
-# 스크롤을 끝까지 내렸을 때에만 하단에 안착하도록 빈 공간 확보
-st.write("")
-st.write("")
-st.write("")
-
-if bin_str:
-    st.markdown(
-        f"""
-        <div style="text-align: center; padding: 40px 0px 20px 0px; border-top: 1px solid #f0f0f0; margin-top: 50px;">
-            <img src="data:image/png;base64,{bin_str}" style="width: 25%; max-width: 200px; opacity: 0.18; filter: grayscale(100%);">
-            <p style="font-size: 11px; color: #aaa; font-family: 'Malgun Gothic', sans-serif; margin-top: 8px;">
-                © SAMRYUNG CO., LTD. ALL RIGHTS RESERVED.
-            </p>
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
