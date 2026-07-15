@@ -13,34 +13,29 @@ import re
 # 웹사이트 설정 및 디자인 (넓은 화면 모드)
 st.set_page_config(layout="wide", page_title="삼륭물산 구매무역팀 마감 포털")
 
-# 🖼️ [워터마크 엔진 - 크기 10% 축소 및 하단 가운데 배치로 대폭 개선]
+# 🖼️ [워터마크 엔진 - 최하단 고정을 위한 본문 배경 간섭 차단 처리]
 def get_base64_of_bin_file(bin_file):
     with open(bin_file, 'rb') as f:
         data = f.read()
     return base64.b64encode(data).decode()
 
 logo_filename = "삼륭물산한글로고.png"
+bin_str = ""
 
 if os.path.exists(logo_filename):
     bin_str = get_base64_of_bin_file(logo_filename)
-    page_bg_img = f'''
+    # 배경 이미지는 비워두어 본문 글씨 영역을 깨끗하게 보장하고 가독성을 높임
+    page_style = '''
     <style>
-    .stApp {{
-        background-image: url("data:image/png;base64,{bin_str}");
-        background-size: 45%; /* 기존 55%에서 약 10% 축소하여 45%로 최적화 */
-        background-repeat: no-repeat;
-        background-position: center bottom 20px; /* 중앙에서 하단 가운데로 이동 (하단에서 20px 띄움) */
-        background-attachment: fixed;
-    }}
-    .block-container {{
-        background-color: rgba(255, 255, 255, 0.75); /* 글씨가 더 잘 보이도록 배경 불투명도를 살짝 높임 */
+    .block-container {
+        background-color: rgba(255, 255, 255, 0.9);
         border-radius: 12px;
         padding: 30px !important;
-        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
-    }}
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.02);
+    }
     </style>
     '''
-    st.markdown(page_bg_img, unsafe_allow_html=True)
+    st.markdown(page_style, unsafe_allow_html=True)
 
 # 🏢 [상단 공통 헤더 레이아웃]
 header_col1, header_col2 = st.columns([2, 1])
@@ -852,3 +847,20 @@ with tab2:
                     )
         else:
             st.info("💡 1. 반입계획서(엑셀)와 2. 마감내역서(PDF)를 올린 뒤 산출하기 버튼을 눌러주세요.")
+
+# ==========================================
+# 🖼️ [FOOTER AREA - 완벽하게 하단 정중앙에 배치]
+# ==========================================
+st.markdown("<br><br><br><br><br>", unsafe_allow_html=True)
+if bin_str:
+    st.markdown(
+        f"""
+        <div style="text-align: center; padding: 40px 0px 20px 0px; border-top: 1px solid #f0f0f0;">
+            <img src="data:image/png;base64,{bin_str}" style="width: 25%; max-width: 220px; opacity: 0.18; filter: grayscale(100%);">
+            <p style="font-size: 11px; color: #aaa; font-family: 'Malgun Gothic', sans-serif; margin-top: 8px;">
+                © SAMRYUNG CO., LTD. ALL RIGHTS RESERVED.
+            </p>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
