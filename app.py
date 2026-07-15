@@ -125,7 +125,7 @@ with tab2:
     st.info("해상물류비 정산 서비스가 대기 중입니다.")
 
 # ==========================================
-# 💰 탭 3: 외상매입금 현황 마스터 (시트별 독립 스캔 엔진 탑재)
+# 💰 탭 3: 외상매입금 현황 마스터 (양식 100% 복제 제어부)
 # ==========================================
 with tab3:
     st.markdown("### 💰 미정산 외상매입금 현황 자동 마감 시스템")
@@ -141,7 +141,6 @@ with tab3:
         ]
         target_month = st.selectbox("마감 대상월 선택", months_options)
         
-        # 숫자 월 추출 (예: "2026년 6월" -> 6)
         match_m = re.search(r"(\d+)월", target_month)
         selected_month_num = int(match_m.group(1)) if match_m else 6
         
@@ -155,16 +154,14 @@ with tab3:
             if not uploaded_payable_plan:
                 st.error("❌ 정산 처리를 위해 반입계획서 엑셀 파일을 업로드해 주세요.")
             else:
-                with st.spinner(f"🤖 반입계획서 ndp/enso 시트의 {selected_month_num}월 마감 대상 데이터 추출 및 하나은행 환율 연동 중..."):
+                with st.spinner(f"🤖 반입계획서 ndp/enso 시트에서 {selected_month_num}월 마감 대장을 원본 규정 양식으로 생성 중..."):
                     try:
                         excel_file = pd.ExcelFile(uploaded_payable_plan)
                         sheet_names_lower = {s.lower().strip(): s for s in excel_file.sheet_names}
                         
                         processed_list = []
                         
-                        # ----------------------------------------------------
-                        # ① NDP 시트 처리 (타코마 픽업일 열 기준 필터링)
-                        # ----------------------------------------------------
+                        # ① NDP 시트 처리 (타코마 픽업일 열 기준)
                         ndp_sheet_key = next((s for s in sheet_names_lower if "ndp" in s), None)
                         if ndp_sheet_key:
                             df_ndp_raw = pd.read_excel(excel_file, sheet_name=sheet_names_lower[ndp_sheet_key], header=None)
@@ -192,7 +189,6 @@ with tab3:
                                     date_raw = row.get(c_pickup, "")
                                     if pd.notna(date_raw) and date_raw != "":
                                         dt_obj = pd.to_datetime(date_raw)
-                                        # 사용자가 지정한 월에 해당하는 데이터만 수집
                                         if dt_obj.month == selected_month_num:
                                             accounting_date = dt_obj.strftime("%Y-%m-%d")
                                             p_name = str(row.get(c_pname, "200ml")).strip()
@@ -207,9 +203,7 @@ with tab3:
                                                 "환율": fx_rate, "원화금액": int(amt_val * fx_rate)
                                             })
                         
-                        # ----------------------------------------------------
-                        # ② ENSO 시트 처리 (입항일 열 기준 필터링)
-                        # ----------------------------------------------------
+                        # ② ENSO 시트 처리 (입항일 열 기준)
                         enso_sheet_key = next((s for s in sheet_names_lower if "enso" in s), None)
                         if enso_sheet_key:
                             df_enso_raw = pd.read_excel(excel_file, sheet_name=sheet_names_lower[enso_sheet_key], header=None)
@@ -237,7 +231,6 @@ with tab3:
                                     date_raw = row.get(c_arr, "")
                                     if pd.notna(date_raw) and date_raw != "":
                                         dt_obj = pd.to_datetime(date_raw)
-                                        # 사용자가 지정한 월에 해당하는 데이터만 수집
                                         if dt_obj.month == selected_month_num:
                                             accounting_date = dt_obj.strftime("%Y-%m-%d")
                                             p_name = str(row.get(c_pname, "200ml")).strip()
@@ -252,11 +245,9 @@ with tab3:
                                                 "환율": fx_rate, "원화금액": int(amt_val * fx_rate)
                                             })
                         
-                        # ----------------------------------------------------
-                        # ③ 통합 및 엑셀 대장 서식 빌드
-                        # ----------------------------------------------------
+                        # ③ 양식 매칭 파일 작성 및 셀 서식 세부 구성
                         if not processed_list:
-                            st.warning(f"⚠️ 업로드하신 반입계획서의 ndp(픽업일)/enso(입항일) 시트에서 {selected_month_num}월에 해당하는 데이터가 존재하지 않습니다.")
+                            st.warning(f"⚠️ 선택하신 {selected_month_num}월에 일치하는 마감 데이터가 엑셀 시트에 존재하지 않습니다.")
                         else:
                             df_preview = pd.DataFrame(processed_list)
                             df_preview = df_preview.sort_values(by="품명").reset_index(drop=True)
@@ -266,6 +257,7 @@ with tab3:
                                 wb = writer.book
                                 ws = wb.add_worksheet(target_month.replace("2026년 ", "26년 "))
                                 
+                                # 폰트 및 스타일셋 선언 (원본과 일란성 쌍둥이)
                                 fmt_title = wb.add_format({'bold': True, 'font_size': 16, 'font_name': '맑은 고딕'})
                                 fmt_memo = wb.add_format({'font_color': 'red', 'font_name': '맑은 고딕', 'font_size': 10, 'bold': True})
                                 fmt_th = wb.add_format({'bold': True, 'bg_color': '#D9E1F2', 'border': 1, 'align': 'center'})
@@ -276,8 +268,9 @@ with tab3:
                                 fmt_subtotal = wb.add_format({'bg_color': '#FFF2CC', 'bold': True, 'border': 1, 'num_format': '#,##0'})
                                 fmt_subtotal_usd = wb.add_format({'bg_color': '#FFF2CC', 'bold': True, 'border': 1, 'num_format': '#,##0.00'})
                                 
-                                ws.write('A1', f"{target_month.replace('2026년 ', '2026년도 ')} 미정산 외상매입금 현황", fmt_title)
-                                ws.write('B4', f"** 회계일자 빨강 표시는 타코마에서 화물 인계일", fmt_memo)
+                                # 0행 제목, 3행 안내문 규격 배치
+                                ws.write(0, 0, f"{target_month.replace('2026년 ', '2026년도 ')} 미정산 외상매입금 현황", fmt_title)
+                                ws.write(3, 1, f"** 회계일자 빨강 표시는 타코마에서 화물 인계일", fmt_memo)
                                 
                                 headers = ["품명", "LOT No.", "회계일자", "R/L", "중량", "면적", "Amount($)", "환율", "원화금액"]
                                 for c_idx, h in enumerate(headers):
@@ -292,6 +285,7 @@ with tab3:
                                     df_group = df_preview[df_preview["품명"] == p_name]
                                     start_row = row_idx + 1
                                     
+                                    # 첫 줄만 품명 노출 처리
                                     for i, (_, item) in enumerate(df_group.iterrows()):
                                         ws.write(row_idx, 0, item["품명"] if i == 0 else "", fmt_cell)
                                         ws.write(row_idx, 1, item["LOT No."], fmt_cell)
@@ -306,17 +300,20 @@ with tab3:
                                     
                                     end_row = row_idx
                                     
-                                    # 공백 행 3줄 주입
+                                    # 원본과 완전 동일한 0이 박힌 데이터용 빈줄 3개 주입
                                     for _ in range(3):
-                                        for c in range(9):
+                                        for c in range(8):
                                             ws.write(row_idx, c, "", fmt_cell)
                                         ws.write(row_idx, 8, 0, fmt_num)
                                         row_idx += 1
                                         
-                                    # 대표 [소 계] 행 작성
+                                    # 한 행 공백 건너뛰기
+                                    row_idx += 1
+                                    
+                                    # 품목별 최종 [소 계] 행 구성 (C열 카운트 함수 포함)
                                     ws.write(row_idx, 0, "", fmt_cell)
                                     ws.write(row_idx, 1, "소       계", wb.add_format({'bg_color': '#FFF2CC', 'bold': True, 'align': 'center', 'border': 1}))
-                                    ws.write(row_idx, 2, len(df_group), fmt_cell)
+                                    ws.write(row_idx, 2, len(df_group), fmt_cell) # 건수 집계 카운터
                                     ws.write_formula(row_idx, 3, f"=SUM(D{start_row}:D{end_row})", fmt_subtotal)
                                     ws.write_formula(row_idx, 4, f"=SUM(E{start_row}:E{end_row})", fmt_subtotal)
                                     ws.write_formula(row_idx, 5, f"=SUM(F{start_row}:F{end_row})", fmt_subtotal)
@@ -325,8 +322,7 @@ with tab3:
                                     ws.write_formula(row_idx, 8, f"=SUM(I{start_row}:I{end_row})", fmt_subtotal)
                                     row_idx += 1
                                     
-                                    for c in range(9):
-                                        ws.write(row_idx, c, "", fmt_cell)
+                                    # 다음 품명과의 경계 라인 빈 로우 생성
                                     row_idx += 1
                                 
                                 ws.set_column('A:B', 16)
@@ -334,7 +330,7 @@ with tab3:
                                 ws.set_column('D:F', 11)
                                 ws.set_column('G:I', 16)
                                 
-                            st.success(f"🎉 반입계획서 스캔 완료! {target_month} 미정산 외상매입금 마스터 대장이 성공적으로 도출되었습니다.")
+                            st.success(f"🎉 서식 대조 완료! {target_month} 외상매입금 마스터 대장이 양식 규칙에 맞춰 완벽하게 생성되었습니다.")
                             st.download_button(
                                 label=f"📥 {target_month} 외상매입금 마스터 엑셀 다운로드 (.xlsx)",
                                 data=ap_excel.getvalue(),
@@ -345,4 +341,4 @@ with tab3:
                             st.dataframe(df_preview, use_container_width=True)
                             
                     except Exception as e:
-                        st.error(f"❌ 시트 스캔 및 정산 레이아웃 매칭 중 에러 발생: {e}")
+                        st.error(f"❌ 양식 빌딩 중 예외 오류 발생: {e}")
