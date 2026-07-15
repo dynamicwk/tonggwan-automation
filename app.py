@@ -126,6 +126,16 @@ def parse_flexible_month(date_val):
             return datetime(2026, month_num, 1)
         return None
 
+# 🎯 삼륭물산 고유의 LOT 번호 패턴 매칭 기반 품명 강제 자동 정합성 엔진
+def auto_define_pname(lot_str, fallback_val):
+    clean_lot = str(lot_str).strip().upper()
+    if "200" in clean_lot: return "200ml"
+    if "340" in clean_lot: return "340ml"
+    if "500" in clean_lot: return "500ml"
+    if "1000" in clean_lot: return "1000ml"
+    if "HP" in clean_lot: return "HP"
+    return str(fallback_val).strip()
+
 # 🗂️ 3대 대메뉴 기능 탭 분할
 tab1, tab2, tab3 = st.tabs([
     "📑 세관 통관 정산 마스터", 
@@ -139,11 +149,11 @@ with tab2:
     st.info("해상물류비 정산 서비스가 대기 중입니다.")
 
 # ==========================================
-# 💰 탭 3: 외상매입금 현황 마스터 (품명별 대수계 통합본)
+# 💰 탭 3: 외상매입금 현황 마스터 (품명 정합성 완벽 패치 버전)
 # ==========================================
 with tab3:
     st.markdown("### 💰 미정산 외상매입금 현황 자동 마감 시스템")
-    st.write("반입계획서 데이터 분석 후 품명 단위 그룹으로 일괄 취합하여 단 하나의 정석 소계 행을 도출합니다.")
+    st.write("반입계획서의 데이터를 기반으로 품명 오분류 체계를 전면 수정하여 단일 소계 레이아웃을 보장합니다.")
     
     m_col1, m_col2 = st.columns([1, 2])
     
@@ -168,14 +178,16 @@ with tab3:
             if not uploaded_payable_plan:
                 st.error("❌ 정산 처리를 위해 반입계획서 엑셀 파일을 업로드해 주세요.")
             else:
-                with st.spinner(f"🤖 품명별 소계 정렬 엔진 가동 및 {selected_month_num}월 정산 작업 진행 중..."):
+                with st.spinner(f"🤖 품명 동기화 작업 및 {selected_month_num}월 단일 대계 집계 테이블 구성 중..."):
                     try:
                         excel_file = pd.ExcelFile(uploaded_payable_plan)
                         sheet_names_lower = {s.lower().replace(" ", ""): s for s in excel_file.sheet_names}
                         
                         processed_list = []
                         
+                        # ----------------------------------------------------
                         # ① NDP 시트 처리 (고정 열 추출: J, K, L, M)
+                        # ----------------------------------------------------
                         ndp_sheet_key = next((s for s in sheet_names_lower if "ndp" in s), None)
                         if ndp_sheet_key:
                             df_ndp = pd.read_excel(excel_file, sheet_name=sheet_names_lower[ndp_sheet_key], header=None)
@@ -197,9 +209,11 @@ with tab3:
                                     if lot_val in ("", "nan", "None") or "Lot" in lot_val:
                                         continue
                                         
-                                    p_name = str(row[c_pname]).strip() if pd.notna(row[c_pname]) else "200ml"
-                                    date_raw = row[c_pickup]
+                                    # 🎯 [핵심 패치] LOT 명칭을 기반으로 품명을 오차 없이 강제 정의
+                                    raw_pname = str(row[c_pname]).strip() if pd.notna(row[c_pname]) else "200ml"
+                                    p_name = auto_define_pname(lot_val, raw_pname)
                                     
+                                    date_raw = row[c_pickup]
                                     dt_obj = parse_flexible_month(date_raw)
                                     if dt_obj and dt_obj.month == selected_month_num:
                                         accounting_date = dt_obj.strftime("%Y-%m-%d")
@@ -216,7 +230,9 @@ with tab3:
                                             "환율": fx_rate, "원화금액": int(amt_val * fx_rate)
                                         })
                         
+                        # ----------------------------------------------------
                         # ② ENSO 시트 처리 (고정 열 추출: H, I, J, K)
+                        # ----------------------------------------------------
                         enso_sheet_key = next((s for s in sheet_names_lower if "enso" in s), None)
                         if enso_sheet_key:
                             df_enso = pd.read_excel(excel_file, sheet_name=sheet_names_lower[enso_sheet_key], header=None)
@@ -238,9 +254,11 @@ with tab3:
                                     if lot_val in ("", "nan", "None") or "Lot" in lot_val:
                                         continue
                                         
-                                    p_name = str(row[c_pname]).strip() if pd.notna(row[c_pname]) else "200ml"
-                                    date_raw = row[c_arr]
+                                    # 🎯 [핵심 패치] LOT 명칭을 기반으로 품명을 오차 없이 강제 정의
+                                    raw_pname = str(row[c_pname]).strip() if pd.notna(row[c_pname]) else "200ml"
+                                    p_name = auto_define_pname(lot_val, raw_pname)
                                     
+                                    date_raw = row[c_arr]
                                     dt_obj = parse_flexible_month(date_raw)
                                     if dt_obj and dt_obj.month == selected_month_num:
                                         accounting_date = dt_obj.strftime("%Y-%m-%d")
@@ -257,11 +275,15 @@ with tab3:
                                             "환율": fx_rate, "원화금액": int(amt_val * fx_rate)
                                         })
                         
-                        # ③ 통합 대장 빌드 및 소계 단일화 구조 반영
+                        # ----------------------------------------------------
+                        # ③ 단일 대계 취합 서식 빌드부
+                        # ----------------------------------------------------
                         if not processed_list:
-                            st.warning(f"⚠️ 업로드하신 반입계획서 내에 선택하신 {selected_month_num}월 마감 대상 조건 데이터가 존재하지 않습니다.")
+                            st.warning(f"⚠️ {selected_month_num}월 조건에 부합하는 정산 데이터가 감지되지 않았습니다.")
                         else:
                             df_preview = pd.DataFrame(processed_list)
+                            
+                            # 정확한 품명 가나다순 정렬로 쪼개짐 방지
                             df_preview = df_preview.sort_values(by="품명").reset_index(drop=True)
                             
                             ap_excel = io.BytesIO()
@@ -293,9 +315,9 @@ with tab3:
                                 
                                 for p_name in unique_pnames:
                                     df_group = df_preview[df_preview["품명"] == p_name]
-                                    start_row = row_idx + 1  # 수식 연산의 순수한 시작 지점 고정
+                                    start_row = row_idx + 1
                                     
-                                    # [버그 수정 완료] 그룹 내의 모든 LOT 데이터를 공백 없이 연속으로 하향 작성
+                                    # 품명 하위 모든 데이터 연속 출력 (찢어짐 전면 방지)
                                     for i, (_, item) in enumerate(df_group.iterrows()):
                                         ws.write(row_idx, 0, item["품명"] if i == 0 else "", fmt_cell)
                                         ws.write(row_idx, 1, item["LOT No."], fmt_cell)
@@ -308,18 +330,18 @@ with tab3:
                                         ws.write_formula(row_idx, 8, f"=G{row_idx+1}*H{row_idx+1}", fmt_num)
                                         row_idx += 1
                                     
-                                    end_row = row_idx  # 수식 연산의 순수한 종료 지점 고정
+                                    end_row = row_idx
                                     
-                                    # 원본 동일 데이터용 빈줄 3개 배치
+                                    # 규정 공백 행 3줄 배치
                                     for _ in range(3):
                                         for c in range(8):
                                             ws.write(row_idx, c, "", fmt_cell)
                                         ws.write(row_idx, 8, 0, fmt_num)
                                         row_idx += 1
                                         
-                                    row_idx += 1 # 한 칸 더 공백 띄우기
+                                    row_idx += 1 # 1행 추가 공백 격리
                                     
-                                    # [버그 수정 완료] 품명 그룹 전체가 완벽히 기술된 뒤 '단 한번만' 대표 소계 생성
+                                    # 품명 통합형 '단 하나의 대표 소계' 라인 명시
                                     ws.write(row_idx, 0, "", fmt_cell)
                                     ws.write(row_idx, 1, "소       계", wb.add_format({'bg_color': '#FFF2CC', 'bold': True, 'align': 'center', 'border': 1}))
                                     ws.write(row_idx, 2, len(df_group), fmt_cell)
@@ -331,14 +353,14 @@ with tab3:
                                     ws.write_formula(row_idx, 8, f"=SUM(I{start_row}:I{end_row})", fmt_subtotal)
                                     row_idx += 1
                                     
-                                    row_idx += 1 # 다음 품명과의 단락용 경계 빈줄 생성
+                                    row_idx += 1
                                 
                                 ws.set_column('A:B', 16)
                                 ws.set_column('C:C', 13)
                                 ws.set_column('D:F', 11)
                                 ws.set_column('G:I', 16)
                                 
-                            st.success(f"🎉 정렬 제어 완료! {target_month} 외상매입금 대장이 품명별 단일 소계 레이아웃으로 완벽하게 연산되었습니다.")
+                            st.success(f"🎯 소계 통합 완료! {target_month} 외상매입금 대장이 정석 포맷에 맞춰 일괄 취합되었습니다.")
                             st.download_button(
                                 label="📥 외상매입금 마스터 엑셀 다운로드 (.xlsx)",
                                 data=ap_excel.getvalue(),
