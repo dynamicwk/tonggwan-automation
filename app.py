@@ -112,6 +112,23 @@ def get_hana_first_exrate(date_str):
     except Exception:
         return 1325.50
 
+# 텍스트 형태의 비정형 날짜(ex. "8월말 9월중순") 예외 처리 함수
+def parse_flexible_month(date_val):
+    if pd.isna(date_val) or str(date_val).strip() == "":
+        return None
+    try:
+        # 정상적인 datetime 객체나 타임스탬프인 경우
+        return pd.to_datetime(date_val)
+    except Exception:
+        # "8월말", "9월중순" 등 한글이 섞인 문자열에서 처음 등장하는 숫자 추출
+        str_val = str(date_val).strip()
+        match = re.search(r"(\d+)월", str_val)
+        if match:
+            month_num = int(match.group(1))
+            # 월 정보만 비교할 수 있도록 가상의 datetime 객체 리턴
+            return datetime(2026, month_num, 1)
+        return None
+
 # 🗂️ 3대 대메뉴 기능 탭 분할
 tab1, tab2, tab3 = st.tabs([
     "📑 세관 통관 정산 마스터", 
@@ -125,11 +142,11 @@ with tab2:
     st.info("해상물류비 정산 서비스가 대기 중입니다.")
 
 # ==========================================
-# 💰 탭 3: 외상매입금 현황 마스터 (양식 100% 복제 제어부)
+# 💰 탭 3: 외상매입금 현황 마스터 (고정 열 지정 및 예외처리 완료)
 # ==========================================
 with tab3:
     st.markdown("### 💰 미정산 외상매입금 현황 자동 마감 시스템")
-    st.write("반입계획서의 `ndp` 시트(타코마픽업일 기준)와 `enso` 시트(입항일 기준)에서 해당 월 데이터만 자동 분리 추출합니다.")
+    st.write("반입계획서의 고정 지정 열값 추출 및 비정형 날짜 텍스트 오류 무시 안전 장치를 탑재했습니다.")
     
     m_col1, m_col2 = st.columns([1, 2])
     
@@ -154,100 +171,102 @@ with tab3:
             if not uploaded_payable_plan:
                 st.error("❌ 정산 처리를 위해 반입계획서 엑셀 파일을 업로드해 주세요.")
             else:
-                with st.spinner(f"🤖 반입계획서 ndp/enso 시트에서 {selected_month_num}월 마감 대장을 원본 규정 양식으로 생성 중..."):
+                with st.spinner(f"🤖 지정된 고정 알파벳 열 데이터를 대조하여 {selected_month_num}월 마감 대장을 빌드 중..."):
                     try:
                         excel_file = pd.ExcelFile(uploaded_payable_plan)
                         sheet_names_lower = {s.lower().strip(): s for s in excel_file.sheet_names}
                         
                         processed_list = []
                         
-                        # ① NDP 시트 처리 (타코마 픽업일 열 기준)
+                        # ----------------------------------------------------
+                        # ① NDP 시트 처리 (J, K, L, M열 하드코딩 매칭)
+                        # ----------------------------------------------------
                         ndp_sheet_key = next((s for s in sheet_names_lower if "ndp" in s), None)
                         if ndp_sheet_key:
-                            df_ndp_raw = pd.read_excel(excel_file, sheet_name=sheet_names_lower[ndp_sheet_key], header=None)
-                            h_idx = 0
-                            for idx, r in df_ndp_raw.iterrows():
-                                if any("Lot" in str(v) or "오더" in str(v) for v in r.values):
-                                    h_idx = idx
-                                    break
-                            df_ndp = pd.read_excel(excel_file, sheet_name=sheet_names_lower[ndp_sheet_key], header=h_idx)
-                            df_ndp.columns = df_ndp.columns.astype(str).str.strip()
+                            # 헤더를 생략하고 원시 데이터로 바로 읽음 (0부터 시작하는 인덱스 기준 활용)
+                            df_ndp = pd.read_excel(excel_file, sheet_name=sheet_names_lower[ndp_sheet_key], header=None)
                             
-                            c_lot = next((c for c in df_ndp.columns if "Lot" in c or "오더" in c), None)
-                            c_pickup = next((c for c in df_ndp.columns if "픽업" in c or "타코마" in c), None)
-                            c_kg = next((c for c in df_ndp.columns if "kg" in c.upper() or "중량" in c), None)
-                            c_sqm = next((c for c in df_ndp.columns if "SQM" in c.upper() or "면적" in c or "수량" in c), None)
-                            c_amt = next((c for c in df_ndp.columns if "금액" in c or "외화" in c or "Amount" in c), None)
-                            c_pname = next((c for c in df_ndp.columns if "품명" in c or "규격" in c), "품명 미확인")
-                            
-                            if c_lot and c_pickup:
-                                for _, row in df_ndp.iterrows():
-                                    lot_val = str(row.get(c_lot, "")).strip()
-                                    if lot_val in ("nan", "None", "") or "Lot" in lot_val:
+                            # 실제 데이터가 시작되는 행 감지 (Lot 또는 규격 텍스트 하단부)
+                            start_parsing = False
+                            for idx, row in df_ndp.iterrows():
+                                if idx < 3:  # 상단 타이틀 스킵
+                                    continue
+                                if any("Lot" in str(v) or "오더" in str(v) for v in row.values):
+                                    start_parsing = True
+                                    continue
+                                
+                                if start_parsing:
+                                    # 열 인덱스 가이드: B열(1)=Lot, C열(2)=품명, G열(6)=타코마픽업
+                                    lot_val = str(row[1]).strip() if pd.notna(row[1]) else ""
+                                    if lot_val in ("", "nan", "None") or "Lot" in lot_val:
                                         continue
+                                        
+                                    p_name = str(row[2]).strip() if pd.notna(row[2]) else "200ml"
+                                    date_raw = row[6] # G열 타코마픽업
                                     
-                                    date_raw = row.get(c_pickup, "")
-                                    if pd.notna(date_raw) and date_raw != "":
-                                        dt_obj = pd.to_datetime(date_raw)
-                                        if dt_obj.month == selected_month_num:
-                                            accounting_date = dt_obj.strftime("%Y-%m-%d")
-                                            p_name = str(row.get(c_pname, "200ml")).strip()
-                                            kg_val = float(str(row.get(c_kg, 0)).replace(",", "")) if pd.notna(row.get(c_kg)) else 0.0
-                                            sqm_val = float(str(row.get(c_sqm, 0)).replace(",", "")) if pd.notna(row.get(c_sqm)) else 0.0
-                                            amt_val = float(str(row.get(c_amt, 0)).replace(",", "")) if pd.notna(row.get(c_amt)) else 0.0
-                                            
-                                            fx_rate = get_hana_first_exrate(accounting_date)
-                                            processed_list.append({
-                                                "품명": p_name, "LOT No.": lot_val, "회계일자": accounting_date,
-                                                "R/L": 72, "중량": kg_val, "면적": sqm_val, "Amount($)": amt_val,
-                                                "환율": fx_rate, "원화금액": int(amt_val * fx_rate)
-                                            })
+                                    dt_obj = parse_flexible_month(date_raw)
+                                    if dt_obj and dt_obj.month == selected_month_num:
+                                        accounting_date = dt_obj.strftime("%Y-%m-%d")
+                                        
+                                        # 유저 지정 고정 열 적용 (J=9, K=10, L=11, M=12)
+                                        rl_val = float(str(row[9]).replace(",", "")) if pd.notna(row[9]) else 0.0
+                                        kg_val = float(str(row[10]).replace(",", "")) if pd.notna(row[10]) else 0.0
+                                        sqm_val = float(str(row[11]).replace(",", "")) if pd.notna(row[11]) else 0.0
+                                        amt_val = float(str(row[12]).replace(",", "")) if pd.notna(row[12]) else 0.0
+                                        
+                                        fx_rate = get_hana_first_exrate(accounting_date)
+                                        processed_list.append({
+                                            "품명": p_name, "LOT No.": lot_val, "회계일자": accounting_date,
+                                            "R/L": rl_val, "중량": kg_val, "면적": sqm_val, "Amount($)": amt_val,
+                                            "환율": fx_rate, "원화금액": int(amt_val * fx_rate)
+                                        })
                         
-                        # ② ENSO 시트 처리 (입항일 열 기준)
+                        # ----------------------------------------------------
+                        # ② ENSO 시트 처리 (H, I, J, K열 하드코딩 매칭)
+                        # ----------------------------------------------------
                         enso_sheet_key = next((s for s in sheet_names_lower if "enso" in s), None)
                         if enso_sheet_key:
-                            df_enso_raw = pd.read_excel(excel_file, sheet_name=sheet_names_lower[enso_sheet_key], header=None)
-                            h_idx = 0
-                            for idx, r in df_enso_raw.iterrows():
-                                if any("Lot" in str(v) or "오더" in str(v) for v in r.values):
-                                    h_idx = idx
-                                    break
-                            df_enso = pd.read_excel(excel_file, sheet_name=sheet_names_lower[enso_sheet_key], header=h_idx)
-                            df_enso.columns = df_enso.columns.astype(str).str.strip()
+                            df_enso = pd.read_excel(excel_file, sheet_name=sheet_names_lower[enso_sheet_key], header=None)
                             
-                            c_lot = next((c for c in df_enso.columns if "Lot" in c or "오더" in c), None)
-                            c_arr = next((c for c in df_enso.columns if "입항" in c), None)
-                            c_kg = next((c for c in df_enso.columns if "kg" in c.upper() or "중량" in c), None)
-                            c_sqm = next((c for c in df_enso.columns if "SQM" in c.upper() or "면적" in c or "수량" in c), None)
-                            c_amt = next((c for c in df_enso.columns if "금액" in c or "외화" in c or "Amount" in c), None)
-                            c_pname = next((c for c in df_enso.columns if "품명" in c or "규격" in c), "품명 미확인")
-                            
-                            if c_lot and c_arr:
-                                for _, row in df_enso.iterrows():
-                                    lot_val = str(row.get(c_lot, "")).strip()
-                                    if lot_val in ("nan", "None", "") or "Lot" in lot_val:
+                            start_parsing = False
+                            for idx, row in df_enso.iterrows():
+                                if idx < 3:
+                                    continue
+                                if any("Lot" in str(v) or "오더" in str(v) for v in row.values):
+                                    start_parsing = True
+                                    continue
+                                
+                                if start_parsing:
+                                    # B열(1)=Lot, C열(2)=품명, E열(4)=입항일
+                                    lot_val = str(row[1]).strip() if pd.notna(row[1]) else ""
+                                    if lot_val in ("", "nan", "None") or "Lot" in lot_val:
                                         continue
+                                        
+                                    p_name = str(row[2]).strip() if pd.notna(row[2]) else "200ml"
+                                    date_raw = row[4] # E열 입항일
                                     
-                                    date_raw = row.get(c_arr, "")
-                                    if pd.notna(date_raw) and date_raw != "":
-                                        dt_obj = pd.to_datetime(date_raw)
-                                        if dt_obj.month == selected_month_num:
-                                            accounting_date = dt_obj.strftime("%Y-%m-%d")
-                                            p_name = str(row.get(c_pname, "200ml")).strip()
-                                            kg_val = float(str(row.get(c_kg, 0)).replace(",", "")) if pd.notna(row.get(c_kg)) else 0.0
-                                            sqm_val = float(str(row.get(c_sqm, 0)).replace(",", "")) if pd.notna(row.get(c_sqm)) else 0.0
-                                            amt_val = float(str(row.get(c_amt, 0)).replace(",", "")) if pd.notna(row.get(c_amt)) else 0.0
-                                            
-                                            fx_rate = get_hana_first_exrate(accounting_date)
-                                            processed_list.append({
-                                                "품명": p_name, "LOT No.": lot_val, "회계일자": accounting_date,
-                                                "R/L": 72, "중량": kg_val, "면적": sqm_val, "Amount($)": amt_val,
-                                                "환율": fx_rate, "원화금액": int(amt_val * fx_rate)
-                                            })
+                                    dt_obj = parse_flexible_month(date_raw)
+                                    if dt_obj and dt_obj.month == selected_month_num:
+                                        accounting_date = dt_obj.strftime("%Y-%m-%d")
+                                        
+                                        # 유저 지정 고정 열 적용 (H=7, I=8, J=9, K=10)
+                                        rl_val = float(str(row[7]).replace(",", "")) if pd.notna(row[7]) else 0.0
+                                        kg_val = float(str(row[8]).replace(",", "")) if pd.notna(row[8]) else 0.0
+                                        sqm_val = float(str(row[9]).replace(",", "")) if pd.notna(row[9]) else 0.0
+                                        amt_val = float(str(row[10]).replace(",", "")) if pd.notna(row[10]) else 0.0
+                                        
+                                        fx_rate = get_hana_first_exrate(accounting_date)
+                                        processed_list.append({
+                                            "품명": p_name, "LOT No.": lot_val, "회계일자": accounting_date,
+                                            "R/L": rl_val, "중량": kg_val, "면적": sqm_val, "Amount($)": amt_val,
+                                            "환율": fx_rate, "원화금액": int(amt_val * fx_rate)
+                                        })
                         
-                        # ③ 양식 매칭 파일 작성 및 셀 서식 세부 구성
+                        # ----------------------------------------------------
+                        # ③ 통합 서식 빌드
+                        # ----------------------------------------------------
                         if not processed_list:
-                            st.warning(f"⚠️ 선택하신 {selected_month_num}월에 일치하는 마감 데이터가 엑셀 시트에 존재하지 않습니다.")
+                            st.warning(f"⚠️ 선택하신 {selected_month_num}월 마감 대상 조건에 맞는 데이터가 반입계획서 시트에 존재하지 않습니다.")
                         else:
                             df_preview = pd.DataFrame(processed_list)
                             df_preview = df_preview.sort_values(by="품명").reset_index(drop=True)
@@ -257,7 +276,6 @@ with tab3:
                                 wb = writer.book
                                 ws = wb.add_worksheet(target_month.replace("2026년 ", "26년 "))
                                 
-                                # 폰트 및 스타일셋 선언 (원본과 일란성 쌍둥이)
                                 fmt_title = wb.add_format({'bold': True, 'font_size': 16, 'font_name': '맑은 고딕'})
                                 fmt_memo = wb.add_format({'font_color': 'red', 'font_name': '맑은 고딕', 'font_size': 10, 'bold': True})
                                 fmt_th = wb.add_format({'bold': True, 'bg_color': '#D9E1F2', 'border': 1, 'align': 'center'})
@@ -268,7 +286,6 @@ with tab3:
                                 fmt_subtotal = wb.add_format({'bg_color': '#FFF2CC', 'bold': True, 'border': 1, 'num_format': '#,##0'})
                                 fmt_subtotal_usd = wb.add_format({'bg_color': '#FFF2CC', 'bold': True, 'border': 1, 'num_format': '#,##0.00'})
                                 
-                                # 0행 제목, 3행 안내문 규격 배치
                                 ws.write(0, 0, f"{target_month.replace('2026년 ', '2026년도 ')} 미정산 외상매입금 현황", fmt_title)
                                 ws.write(3, 1, f"** 회계일자 빨강 표시는 타코마에서 화물 인계일", fmt_memo)
                                 
@@ -285,7 +302,6 @@ with tab3:
                                     df_group = df_preview[df_preview["품명"] == p_name]
                                     start_row = row_idx + 1
                                     
-                                    # 첫 줄만 품명 노출 처리
                                     for i, (_, item) in enumerate(df_group.iterrows()):
                                         ws.write(row_idx, 0, item["품명"] if i == 0 else "", fmt_cell)
                                         ws.write(row_idx, 1, item["LOT No."], fmt_cell)
@@ -300,20 +316,17 @@ with tab3:
                                     
                                     end_row = row_idx
                                     
-                                    # 원본과 완전 동일한 0이 박힌 데이터용 빈줄 3개 주입
                                     for _ in range(3):
                                         for c in range(8):
                                             ws.write(row_idx, c, "", fmt_cell)
                                         ws.write(row_idx, 8, 0, fmt_num)
                                         row_idx += 1
                                         
-                                    # 한 행 공백 건너뛰기
                                     row_idx += 1
                                     
-                                    # 품목별 최종 [소 계] 행 구성 (C열 카운트 함수 포함)
                                     ws.write(row_idx, 0, "", fmt_cell)
                                     ws.write(row_idx, 1, "소       계", wb.add_format({'bg_color': '#FFF2CC', 'bold': True, 'align': 'center', 'border': 1}))
-                                    ws.write(row_idx, 2, len(df_group), fmt_cell) # 건수 집계 카운터
+                                    ws.write(row_idx, 2, len(df_group), fmt_cell)
                                     ws.write_formula(row_idx, 3, f"=SUM(D{start_row}:D{end_row})", fmt_subtotal)
                                     ws.write_formula(row_idx, 4, f"=SUM(E{start_row}:E{end_row})", fmt_subtotal)
                                     ws.write_formula(row_idx, 5, f"=SUM(F{start_row}:F{end_row})", fmt_subtotal)
@@ -322,7 +335,6 @@ with tab3:
                                     ws.write_formula(row_idx, 8, f"=SUM(I{start_row}:I{end_row})", fmt_subtotal)
                                     row_idx += 1
                                     
-                                    # 다음 품명과의 경계 라인 빈 로우 생성
                                     row_idx += 1
                                 
                                 ws.set_column('A:B', 16)
@@ -330,7 +342,7 @@ with tab3:
                                 ws.set_column('D:F', 11)
                                 ws.set_column('G:I', 16)
                                 
-                            st.success(f"🎉 서식 대조 완료! {target_month} 외상매입금 마스터 대장이 양식 규칙에 맞춰 완벽하게 생성되었습니다.")
+                            st.success(f"🎉 지정 열 맵핑 완료! {target_month} 외상매입금 마스터 대장이 오류 없이 완벽하게 조립되었습니다.")
                             st.download_button(
                                 label=f"📥 {target_month} 외상매입금 마스터 엑셀 다운로드 (.xlsx)",
                                 data=ap_excel.getvalue(),
@@ -341,4 +353,4 @@ with tab3:
                             st.dataframe(df_preview, use_container_width=True)
                             
                     except Exception as e:
-                        st.error(f"❌ 양식 빌딩 중 예외 오류 발생: {e}")
+                        st.error(f"❌ 데이터 정산 및 양식 빌드 중 오류 발생: {e}")
