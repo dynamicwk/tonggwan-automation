@@ -112,20 +112,17 @@ def get_hana_first_exrate(date_str):
     except Exception:
         return 1325.50
 
-# 텍스트 형태의 비정형 날짜(ex. "8월말 9월중순") 예외 처리 함수
+# 비정형 한글 텍스트 날짜 유연 필터링 처리 함수
 def parse_flexible_month(date_val):
     if pd.isna(date_val) or str(date_val).strip() == "":
         return None
     try:
-        # 정상적인 datetime 객체나 타임스탬프인 경우
         return pd.to_datetime(date_val)
     except Exception:
-        # "8월말", "9월중순" 등 한글이 섞인 문자열에서 처음 등장하는 숫자 추출
         str_val = str(date_val).strip()
         match = re.search(r"(\d+)월", str_val)
         if match:
             month_num = int(match.group(1))
-            # 월 정보만 비교할 수 있도록 가상의 datetime 객체 리턴
             return datetime(2026, month_num, 1)
         return None
 
@@ -142,11 +139,11 @@ with tab2:
     st.info("해상물류비 정산 서비스가 대기 중입니다.")
 
 # ==========================================
-# 💰 탭 3: 외상매입금 현황 마스터 (고정 열 지정 및 예외처리 완료)
+# 💰 탭 3: 외상매입금 현황 마스터 (동적 검색 및 예외 복구 버전)
 # ==========================================
 with tab3:
     st.markdown("### 💰 미정산 외상매입금 현황 자동 마감 시스템")
-    st.write("반입계획서의 고정 지정 열값 추출 및 비정형 날짜 텍스트 오류 무시 안전 장치를 탑재했습니다.")
+    st.write("반입계획서 내부에서 날짜 열 위치를 자동으로 찾아내어 데이터 누락을 원천 차단합니다.")
     
     m_col1, m_col2 = st.columns([1, 2])
     
@@ -171,44 +168,47 @@ with tab3:
             if not uploaded_payable_plan:
                 st.error("❌ 정산 처리를 위해 반입계획서 엑셀 파일을 업로드해 주세요.")
             else:
-                with st.spinner(f"🤖 지정된 고정 알파벳 열 데이터를 대조하여 {selected_month_num}월 마감 대장을 빌드 중..."):
+                with st.spinner(f"🤖 반입계획서 내부 날짜 구조 분석 및 {selected_month_num}월 정산 처리 중..."):
                     try:
                         excel_file = pd.ExcelFile(uploaded_payable_plan)
-                        sheet_names_lower = {s.lower().strip(): s for s in excel_file.sheet_names}
+                        sheet_names_lower = {s.lower().replace(" ", ""): s for s in excel_file.sheet_names}
                         
                         processed_list = []
                         
                         # ----------------------------------------------------
-                        # ① NDP 시트 처리 (J, K, L, M열 하드코딩 매칭)
+                        # ① NDP 시트 유연 스캔 (고정 열: J, K, L, M)
                         # ----------------------------------------------------
                         ndp_sheet_key = next((s for s in sheet_names_lower if "ndp" in s), None)
                         if ndp_sheet_key:
-                            # 헤더를 생략하고 원시 데이터로 바로 읽음 (0부터 시작하는 인덱스 기준 활용)
                             df_ndp = pd.read_excel(excel_file, sheet_name=sheet_names_lower[ndp_sheet_key], header=None)
                             
-                            # 실제 데이터가 시작되는 행 감지 (Lot 또는 규격 텍스트 하단부)
                             start_parsing = False
+                            c_lot, c_pname, c_pickup = 1, 2, 6  # 기본 안전망 인덱스 세팅
+                            
                             for idx, row in df_ndp.iterrows():
-                                if idx < 3:  # 상단 타이틀 스킵
-                                    continue
+                                # 헤더 타이틀 로우에서 동적으로 날짜 컬럼 위치 색출
                                 if any("Lot" in str(v) or "오더" in str(v) for v in row.values):
                                     start_parsing = True
+                                    row_vals = [str(v).strip() for v in row.values]
+                                    for r_idx, val in enumerate(row_vals):
+                                        if "Lot" in val or "오더" in val: c_lot = r_idx
+                                        if "품명" in val or "규격" in val: c_pname = r_idx
+                                        if "픽업" in val or "타코마" in val: c_pickup = r_idx
                                     continue
                                 
                                 if start_parsing:
-                                    # 열 인덱스 가이드: B열(1)=Lot, C열(2)=품명, G열(6)=타코마픽업
-                                    lot_val = str(row[1]).strip() if pd.notna(row[1]) else ""
+                                    lot_val = str(row[c_lot]).strip() if pd.notna(row[c_lot]) else ""
                                     if lot_val in ("", "nan", "None") or "Lot" in lot_val:
                                         continue
                                         
-                                    p_name = str(row[2]).strip() if pd.notna(row[2]) else "200ml"
-                                    date_raw = row[6] # G열 타코마픽업
+                                    p_name = str(row[c_pname]).strip() if pd.notna(row[c_pname]) else "200ml"
+                                    date_raw = row[c_pickup]
                                     
                                     dt_obj = parse_flexible_month(date_raw)
                                     if dt_obj and dt_obj.month == selected_month_num:
                                         accounting_date = dt_obj.strftime("%Y-%m-%d")
                                         
-                                        # 유저 지정 고정 열 적용 (J=9, K=10, L=11, M=12)
+                                        # 유저 지정 고정 열값 맵핑 (J=9, K=10, L=11, M=12)
                                         rl_val = float(str(row[9]).replace(",", "")) if pd.notna(row[9]) else 0.0
                                         kg_val = float(str(row[10]).replace(",", "")) if pd.notna(row[10]) else 0.0
                                         sqm_val = float(str(row[11]).replace(",", "")) if pd.notna(row[11]) else 0.0
@@ -222,34 +222,38 @@ with tab3:
                                         })
                         
                         # ----------------------------------------------------
-                        # ② ENSO 시트 처리 (H, I, J, K열 하드코딩 매칭)
+                        # ② ENSO 시트 유연 스캔 (고정 열: H, I, J, K)
                         # ----------------------------------------------------
                         enso_sheet_key = next((s for s in sheet_names_lower if "enso" in s), None)
                         if enso_sheet_key:
                             df_enso = pd.read_excel(excel_file, sheet_name=sheet_names_lower[enso_sheet_key], header=None)
                             
                             start_parsing = False
+                            c_lot, c_pname, c_arr = 1, 2, 4  # 기본 안전망 인덱스 세팅
+                            
                             for idx, row in df_enso.iterrows():
-                                if idx < 3:
-                                    continue
                                 if any("Lot" in str(v) or "오더" in str(v) for v in row.values):
                                     start_parsing = True
+                                    row_vals = [str(v).strip() for v in row.values]
+                                    for r_idx, val in enumerate(row_vals):
+                                        if "Lot" in val or "오더" in val: c_lot = r_idx
+                                        if "품명" in val or "규격" in val: c_pname = r_idx
+                                        if "입항" in val: c_arr = r_idx
                                     continue
                                 
                                 if start_parsing:
-                                    # B열(1)=Lot, C열(2)=품명, E열(4)=입항일
-                                    lot_val = str(row[1]).strip() if pd.notna(row[1]) else ""
+                                    lot_val = str(row[c_lot]).strip() if pd.notna(row[c_lot]) else ""
                                     if lot_val in ("", "nan", "None") or "Lot" in lot_val:
                                         continue
                                         
-                                    p_name = str(row[2]).strip() if pd.notna(row[2]) else "200ml"
-                                    date_raw = row[4] # E열 입항일
+                                    p_name = str(row[c_pname]).strip() if pd.notna(row[c_pname]) else "200ml"
+                                    date_raw = row[c_arr]
                                     
                                     dt_obj = parse_flexible_month(date_raw)
                                     if dt_obj and dt_obj.month == selected_month_num:
                                         accounting_date = dt_obj.strftime("%Y-%m-%d")
                                         
-                                        # 유저 지정 고정 열 적용 (H=7, I=8, J=9, K=10)
+                                        # 유저 지정 고정 열값 맵핑 (H=7, I=8, J=9, K=10)
                                         rl_val = float(str(row[7]).replace(",", "")) if pd.notna(row[7]) else 0.0
                                         kg_val = float(str(row[8]).replace(",", "")) if pd.notna(row[8]) else 0.0
                                         sqm_val = float(str(row[9]).replace(",", "")) if pd.notna(row[9]) else 0.0
@@ -266,7 +270,7 @@ with tab3:
                         # ③ 통합 서식 빌드
                         # ----------------------------------------------------
                         if not processed_list:
-                            st.warning(f"⚠️ 선택하신 {selected_month_num}월 마감 대상 조건에 맞는 데이터가 반입계획서 시트에 존재하지 않습니다.")
+                            st.warning(f"⚠️ 업로드하신 반입계획서 시트 내에서 선택하신 {selected_month_num}월 조건에 매칭되는 유효한 날짜가 인식되지 않았습니다. 파일 내부 날짜 컬럼을 확인해 주세요.")
                         else:
                             df_preview = pd.DataFrame(processed_list)
                             df_preview = df_preview.sort_values(by="품명").reset_index(drop=True)
@@ -342,9 +346,9 @@ with tab3:
                                 ws.set_column('D:F', 11)
                                 ws.set_column('G:I', 16)
                                 
-                            st.success(f"🎉 지정 열 맵핑 완료! {target_month} 외상매입금 마스터 대장이 오류 없이 완벽하게 조립되었습니다.")
+                            st.success(f"🎉 동적 스캔 완료! {target_month} 외상매입금 마스터 대장이 규칙에 맞춰 완벽하게 도출되었습니다.")
                             st.download_button(
-                                label=f"📥 {target_month} 외상매입금 마스터 엑셀 다운로드 (.xlsx)",
+                                label="📥 외상매입금 마스터 엑셀 다운로드 (.xlsx)",
                                 data=ap_excel.getvalue(),
                                 file_name=f"외상매입금현황_{target_month.replace(' ', '_')}.xlsx",
                                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
