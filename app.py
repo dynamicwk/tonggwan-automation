@@ -13,29 +13,38 @@ import re
 # 웹사이트 설정 및 디자인 (넓은 화면 모드)
 st.set_page_config(layout="wide", page_title="삼륭물산 구매무역팀 마감 포털")
 
-# 🖼️ [워터마크 엔진 - 최하단 고정을 위한 본문 배경 간섭 차단 처리]
-def get_base64_of_bin_file(bin_file):
-    with open(bin_file, 'rb') as f:
-        data = f.read()
-    return base64.b64encode(data).decode()
-
+# 🖼️ [워터마크 엔진 - 최하단 고정을 위한 깃허브 경로 안전 연동식]
 logo_filename = "삼륭물산한글로고.png"
 bin_str = ""
 
-if os.path.exists(logo_filename):
-    bin_str = get_base64_of_bin_file(logo_filename)
-    # 배경 이미지는 비워두어 본문 글씨 영역을 깨끗하게 보장하고 가독성을 높임
-    page_style = '''
-    <style>
-    .block-container {
-        background-color: rgba(255, 255, 255, 0.9);
-        border-radius: 12px;
-        padding: 30px !important;
-        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.02);
-    }
-    </style>
-    '''
-    st.markdown(page_style, unsafe_allow_html=True)
+# 깃허브 서버의 현재 작업 폴더 경로 및 상위 폴더까지 샅샅이 뒤져서 파일을 안전하게 읽어옴
+possible_paths = [
+    logo_filename,
+    os.path.join(os.path.dirname(__file__), logo_filename) if "__file__" in locals() else logo_filename,
+    os.path.join(os.getcwd(), logo_filename)
+]
+
+for p in possible_paths:
+    if os.path.exists(p):
+        try:
+            with open(p, "rb") as f:
+                bin_str = base64.b64encode(f.read()).decode()
+            break
+        except Exception:
+            pass
+
+# 본문 영역을 깨끗하게 보장하고 가독성을 높임
+page_style = '''
+<style>
+.block-container {
+    background-color: rgba(255, 255, 255, 0.9);
+    border-radius: 12px;
+    padding: 30px !important;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.02);
+}
+</style>
+'''
+st.markdown(page_style, unsafe_allow_html=True)
 
 # 🏢 [상단 공통 헤더 레이아웃]
 header_col1, header_col2 = st.columns([2, 1])
@@ -849,14 +858,18 @@ with tab2:
             st.info("💡 1. 반입계획서(엑셀)와 2. 마감내역서(PDF)를 올린 뒤 산출하기 버튼을 눌러주세요.")
 
 # ==========================================
-# 🖼️ [FOOTER AREA - 완벽하게 하단 정중앙에 배치]
+# 🖼️ [FOOTER AREA - 완벽하게 페이지 최하단 바닥 정중앙에 고정]
 # ==========================================
-st.markdown("<br><br><br><br><br>", unsafe_allow_html=True)
+# 스크롤을 끝까지 내렸을 때에만 하단에 안착하도록 빈 공간 확보
+st.write("")
+st.write("")
+st.write("")
+
 if bin_str:
     st.markdown(
         f"""
-        <div style="text-align: center; padding: 40px 0px 20px 0px; border-top: 1px solid #f0f0f0;">
-            <img src="data:image/png;base64,{bin_str}" style="width: 25%; max-width: 220px; opacity: 0.18; filter: grayscale(100%);">
+        <div style="text-align: center; padding: 40px 0px 20px 0px; border-top: 1px solid #f0f0f0; margin-top: 50px;">
+            <img src="data:image/png;base64,{bin_str}" style="width: 25%; max-width: 200px; opacity: 0.18; filter: grayscale(100%);">
             <p style="font-size: 11px; color: #aaa; font-family: 'Malgun Gothic', sans-serif; margin-top: 8px;">
                 © SAMRYUNG CO., LTD. ALL RIGHTS RESERVED.
             </p>
