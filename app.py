@@ -8,9 +8,9 @@ from bs4 import BeautifulSoup
 import xlsxwriter
 
 # 페이지 설정
-st.set_page_config(layout="wide", page_title="삼륭물산 구매무역팀 마감 포털")
+st.set_page_config(layout="wide", page_title="삼륭물산 마감 포털")
 
-# [핵심 엔진 1] 실시간 환율 수집 (하나은행)
+# [핵심] 실시간 환율 조회 (하나은행)
 @st.cache_data(ttl=86400)
 def get_realtime_exchange_rate(date_str):
     try:
@@ -27,7 +27,7 @@ def get_realtime_exchange_rate(date_str):
         return 1325.50
     except: return 1325.50
 
-# [핵심 엔진 2] 유틸리티
+# 유틸리티 (날짜 및 품명)
 def parse_flexible_month(date_val, target_month_num):
     try:
         dt = pd.to_datetime(date_val)
@@ -46,30 +46,36 @@ def auto_define_pname(lot_str, fallback_val):
     if "HP" in clean_lot: return "HP"
     return str(fallback_val).strip()
 
-# 탭 메뉴
+# 레이아웃 정의
 tab1, tab2, tab3 = st.tabs(["📑 세관 통관 정산 마스터", "📦 해상물류비 마감정산", "💰 외상매입금 현황 마스터"])
 
 with tab1:
-    st.header("📑 세관 통관 정산 시스템")
-    st.write("관세청 데이터와 수입신고필증을 매칭하여 정산합니다.")
-    # (세관 정산 로직 구동 구간)
+    st.header("📑 세관 통관 정산 마스터")
+    st.write("관세청 고지목록과 수입신고필증을 매칭하여 부가세 및 과세가격을 정산합니다.")
+    uploaded_customs = st.file_uploader("세관 데이터 업로드", type=["xlsx"], key="customs")
+    if uploaded_customs:
+        df_customs = pd.read_excel(uploaded_customs)
+        st.dataframe(df_customs)
 
 with tab2:
-    st.header("📦 해상물류비 감사 시스템")
-    st.write("판토스 마감내역과 반입계획서를 비교 검증합니다.")
-    # (물류비 정산 로직 구동 구간)
+    st.header("📦 해상물류비 마감정산")
+    st.write("판토스 마감내역과 반입계획을 매칭하여 운임 단가를 검증합니다.")
+    uploaded_logistics = st.file_uploader("판토스 내역 업로드", type=["xlsx"], key="logistics")
+    if uploaded_logistics:
+        df_logistics = pd.read_excel(uploaded_logistics)
+        st.dataframe(df_logistics)
 
 with tab3:
     st.header("💰 외상매입금 현황 마스터")
     target_month = st.selectbox("마감 대상월", [f"2026년 {i}월" for i in range(12, 0, -1)])
     selected_month_num = int(re.search(r"(\d+)월", target_month).group(1))
-    uploaded_plan = st.file_uploader("반입계획서 업로드", type=["xlsx"])
-    
+    uploaded_plan = st.file_uploader("반입계획서 업로드", type=["xlsx"], key="payable")
+
     if st.button("🚀 최종 마감 대장 생성"):
         if uploaded_plan:
-            with st.spinner("실시간 환율 수집 및 마감 대장 생성 중..."):
+            with st.spinner("실시간 환율 수집 및 정산 대장 생성 중..."):
                 excel_file = pd.ExcelFile(uploaded_plan)
                 processed_list = []
-                # (중략: NDP/ENSO 데이터 파싱 로직)
-                # 추출 시 fx_rate = get_realtime_exchange_rate(accounting_date) 적용
+                # (이곳에 NDP/ENSO 데이터 파싱 루프 입력)
+                # 핵심 환율 적용: fx_rate = get_realtime_exchange_rate(accounting_date)
                 st.success("실시간 환율이 적용된 마감 대장이 생성되었습니다.")
