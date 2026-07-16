@@ -154,6 +154,17 @@ def make_unique_cols(columns):
             cols.append(c_str)
     return cols
 
+# 웹 대시보드 미리보기용 세관별 컬러 스타일링 함수
+def color_sewan_style(val):
+    val_str = str(val)
+    if '안산' in val_str:
+        return 'background-color: #E2EFDA; color: #375623; font-weight: bold;'
+    elif '안양' in val_str:
+        return 'background-color: #D9E1F2; color: #1F4E78; font-weight: bold;'
+    elif '부산' in val_str:
+        return 'background-color: #FCE4D6; color: #C65911; font-weight: bold;'
+    return ''
+
 # ==========================================
 # 3. 메뉴 탭 구성
 # ==========================================
@@ -164,7 +175,7 @@ tab1, tab2, tab3 = st.tabs([
 ])
 
 # ------------------------------------------
-# 📑 TAB 1: 세관 통관 부가세 정산 마스터 (제미나이 AI 복합 검증 & 끝자리 'u' 해결)
+# 📑 TAB 1: 세관 통관 부가세 정산 마스터 (세관별 모으기 & 컬러 셀 & 테두리 실금)
 # ------------------------------------------
 with tab1:
     st.markdown("### 📑 안산 / 안양 / 부산 세관 월별납부 부가세·관세 정밀 매칭")
@@ -231,7 +242,7 @@ with tab1:
                             )
                             ai_pdf_contents.append(ai_file)
                         
-                        # 🛠️ 제미나이 전용 최적화 프롬프트 (총과세가격과 운임 혼동 금지 구절 강화)
+                        # 🛠️ 제미나이 전용 최적화 프롬프트
                         prompt = """
                         당신은 관세 법인 소속의 정산 자동화 AI입니다. 제공된 수입신고필증 PDF 문서 전체를 전수조사하여, 각 '신고번호'별로 아래 항목들을 정확하게 추출하여 JSON 배열 형태로 응답해 주세요.
                         
@@ -266,7 +277,7 @@ with tab1:
                         extracted_data = json.loads(response.text)
                         pdf_master_dict = {}
                         for item in extracted_data:
-                            # 🎯 [핵심 해결책] 신고번호 뒤에 붙은 알파벳 'u'나 다른 식별 문자를 완벽히 제거
+                            # 🎯 끝자리 알파벳 'u'나 다른 식별 문자 제거
                             raw_shin = str(item.get('shin_no', '')).strip()
                             clean_shin = "".join(filter(str.isalnum, raw_shin))
                             if clean_shin.lower().endswith('u'):
@@ -276,7 +287,6 @@ with tab1:
                         processed_data = []
                         
                         for idx, row in df_notice_all.iterrows():
-                            no = idx + 1
                             excel_shin_no = str(row.get('신고번호', '')).strip()
                             clean_excel_shin = "".join(filter(str.isalnum, excel_shin_no))
                             if clean_excel_shin.lower().endswith('u'):
@@ -327,7 +337,7 @@ with tab1:
                                 except:
                                     insurance_num = 0
                                     
-                                # 🛡️ [핵심 패치] 운임비 비정상 과다 검출(과세가격 오추출) 자동 방어 로직
+                                # 🛡️ 운임비 비정상 과다 검출 방어 로직
                                 raw_goods_val = usd_num * fx_num
                                 if raw_goods_val > 0 and (freight_num / raw_goods_val) > 0.3:
                                     freight_num = 0
@@ -335,7 +345,7 @@ with tab1:
                                 if "SZINC" in bl_no.upper():
                                     freight_num = 0
                                 
-                                # 🛠️ 4번 항목 센트 누락 방어 밸브 유지
+                                # 🛠️ 4번 항목 센트 누락 방어 밸브
                                 if "1088" in clean_excel_shin:
                                     usd_num = 137048.18
                                     
@@ -352,7 +362,7 @@ with tab1:
                                 chk_result = "❌ 금액 불일치"
                             
                             processed_data.append({
-                                "번호": no,
+                                "번호": 0,  # 정렬 후 재부여 예정
                                 "신고번호": excel_shin_no,
                                 "납부(고지)번호": goji_no,
                                 "수입부가세 (고지금액)": actual_vat_amount,
@@ -370,70 +380,116 @@ with tab1:
                                 "고지액 검증 결과": chk_result
                             })
                         
+                        df_final = pd.DataFrame(processed_data)
+                        
+                        # 🎯 [요청 반영 1] 세관별(안산 -> 안양 -> 부산 순)로 한눈에 들어오도록 데이터 정렬 및 모으기
+                        df_final['세관_정렬기준'] = df_final['세관'].map({'안산세관': 1, '안양세관': 2, '부산세관': 3}).fillna(4)
+                        df_final = df_final.sort_values(by=['세관_정렬기준', '신고번호']).reset_index(drop=True)
+                        df_final.drop(columns=['세관_정렬기준'], inplace=True)
+                        df_final['번호'] = range(1, len(df_final) + 1)  # 모아진 순서대로 1번부터 깔끔하게 재부여
+                        
                         output_excel = io.BytesIO()
                         workbook = pd.ExcelWriter(output_excel, engine='xlsxwriter')
                         
-                        df_final = pd.DataFrame(processed_data)
                         df_excel_base = df_final[["번호", "신고번호", "납부(고지)번호", "수입부가세 (고지금액)", "신고일자", 
                                               "④ B/L번호 (HBL)", "③⑦ 결제금액 (USD)", "인도조건", "환율", 
                                               "⑤⑦ 운임비 (KRW)", "⑤⑧ 보험증권 (KRW)", "세관", "비고"]]
                         
-                        df_excel_base.to_excel(workbook, sheet_name="통관월납_정산대장", index=False)
+                        # 엑셀 시트 생성 (to_excel 기본 테두리 누락을 막기 위해 직접 셀 작성)
                         wb = workbook.book
-                        ws = workbook.sheets["통관월납_정산대장"]
+                        ws_sum = wb.add_worksheet("Summary")
+                        ws = wb.add_worksheet("통관월납_정산대장")
                         
-                        num_format = wb.add_format({'num_format': '#,##0'})
-                        usd_format = wb.add_format({'num_format': '#,##0.00'})
-                        fx_format = wb.add_format({'num_format': '#,##0.0000'})
-                        align_center = wb.add_format({'align': 'center'})
+                        # 🎯 [요청 반영 2] 모든 셀 테두리 실금(border=1) 포함 서식 정의
+                        fmt_header = wb.add_format({'bg_color': '#1F4E78', 'font_color': '#FFFFFF', 'bold': True, 'border': 1, 'align': 'center'})
+                        fmt_center = wb.add_format({'align': 'center', 'border': 1})
+                        fmt_num = wb.add_format({'num_format': '#,##0', 'border': 1})
+                        fmt_usd = wb.add_format({'num_format': '#,##0.00', 'border': 1})
+                        fmt_fx = wb.add_format({'num_format': '#,##0.0000', 'border': 1})
                         
-                        blue_bold_center = wb.add_format({'align': 'center', 'font_color': '#002060', 'bold': True})
-                        red_bold_center = wb.add_format({'align': 'center', 'font_color': '#FF0000', 'bold': True})
+                        # 🎯 [요청 반영 3] 세관별 한눈에 구분을 위한 전용 파스텔 컬러 셀 포맷 (테두리 실금 포함)
+                        fmt_ansan = wb.add_format({'bg_color': '#E2EFDA', 'font_color': '#375623', 'bold': True, 'border': 1, 'align': 'center'})  # 연한 초록
+                        fmt_anyang = wb.add_format({'bg_color': '#D9E1F2', 'font_color': '#1F4E78', 'bold': True, 'border': 1, 'align': 'center'}) # 연한 파랑
+                        fmt_busan = wb.add_format({'bg_color': '#FCE4D6', 'font_color': '#C65911', 'bold': True, 'border': 1, 'align': 'center'})  # 연한 주황
+                        fmt_sewan_default = wb.add_format({'bg_color': '#F2F2F2', 'bold': True, 'border': 1, 'align': 'center'}) # 기타
                         
-                        summary_header_format = wb.add_format({
-                            'bg_color': '#1F4E78', 'font_color': '#FFFFFF', 'bold': True, 'align': 'center', 'border': 1
-                        })
+                        blue_bold_center = wb.add_format({'align': 'center', 'font_color': '#002060', 'bold': True, 'border': 1, 'bg_color': '#D9E1F2'})
+                        red_bold_center = wb.add_format({'align': 'center', 'font_color': '#FF0000', 'bold': True, 'border': 1, 'bg_color': '#FCE4D6'})
+                        
+                        summary_header_format = wb.add_format({'bg_color': '#1F4E78', 'font_color': '#FFFFFF', 'bold': True, 'align': 'center', 'border': 1})
                         summary_data_format = wb.add_format({'border': 1, 'num_format': '#,##0'})
                         summary_total_format = wb.add_format({'bg_color': '#D9E1F2', 'bold': True, 'border': 1, 'num_format': '#,##0'})
                         
                         # --- 시트 1 : Summary 시트 ---
-                        ws_sum = wb.add_worksheet("Summary")
                         ws_sum.set_column('B:C', 25)
-                        
                         ws_sum.write('B2', '🏢 세관 구분', summary_header_format)
                         ws_sum.write('C2', '💰 수입부가세 총합계 (KRW)', summary_header_format)
                         
-                        last_row_idx = len(processed_data) + 1
-                        ws_sum.write('B3', '안산세관', summary_data_format)
+                        last_row_idx = len(df_final) + 1
+                        ws_sum.write('B3', '안산세관', fmt_ansan)
                         ws_sum.write_formula('C3', f'=SUMIF(통관월납_정산대장!L2:L{last_row_idx}, "안산세관", 통관월납_정산대장!D2:D{last_row_idx})', summary_data_format)
                         
-                        ws_sum.write('B4', '안양세관', summary_data_format)
+                        ws_sum.write('B4', '안양세관', fmt_anyang)
                         ws_sum.write_formula('C4', f'=SUMIF(통관월납_정산대장!L2:L{last_row_idx}, "안양세관", 통관월납_정산대장!D2:D{last_row_idx})', summary_data_format)
                         
-                        ws_sum.write('B5', '부산세관', summary_data_format)
+                        ws_sum.write('B5', '부산세관', fmt_busan)
                         ws_sum.write_formula('C5', f'=SUMIF(통관월납_정산대장!L2:L{last_row_idx}, "부산세관", 통관월납_정산대장!D2:D{last_row_idx})', summary_data_format)
                         
                         ws_sum.write('B6', '🚀 전체 부가세 총계', summary_total_format)
                         ws_sum.write_formula('C6', '=SUM(C3:C5)', summary_total_format)
                         
-                        # --- 시트 2 : 정산대장 메인 시트 수식 주입 ---
-                        ws.set_column('D:D', 18, num_format)
-                        ws.set_column('G:G', 18, usd_format)
-                        ws.set_column('I:I', 12, fx_format)
-                        ws.set_column('J:K', 15, num_format)
+                        # --- 시트 2 : 정산대장 메인 시트 직접 작성 (테두리 100% 보장) ---
+                        ws.set_column('A:C', 16)
+                        ws.set_column('D:D', 18)
+                        ws.set_column('E:F', 15)
+                        ws.set_column('G:G', 18)
+                        ws.set_column('H:I', 12)
+                        ws.set_column('J:K', 16)
+                        ws.set_column('L:L', 14)
+                        ws.set_column('M:M', 14)
+                        ws.set_column('N:N', 24) 
+                        ws.set_column('O:O', 25) 
+                        ws.set_column('P:P', 22) 
                         
-                        ws.set_column('N:N', 24, num_format) 
-                        ws.set_column('O:O', 25, num_format) 
-                        ws.set_column('P:P', 22, align_center) 
+                        # 헤더 작성
+                        all_headers = list(df_excel_base.columns) + ['과세가격(원화산출식)', '수식검증 부가세(원단위 버림)', '고지액 검증 결과']
+                        for c_idx, h_title in enumerate(all_headers):
+                            ws.write(0, c_idx, h_title, fmt_header)
                         
-                        ws.write('N1', '과세가격(원화산출식)')
-                        ws.write('O1', '수식검증 부가세(원단위 버림)')
-                        ws.write('P1', '고지액 검증 결과')
-                        
-                        for i in range(2, len(processed_data) + 2):
-                            ws.write_formula(f'N{i}', f'=(G{i}*I{i})+J{i}+K{i}', num_format)
-                            ws.write_formula(f'O{i}', f'=ROUNDDOWN(N{i}*0.1, -1)', num_format)
-                            ws.write_formula(f'P{i}', f'=IF(D{i}=O{i}, "✔ 완벽 일치", "❌ 금액 불일치")', align_center)
+                        # 데이터 셀 작성 (모든 셀 테두리 실금 & 세관별 컬러 삽입)
+                        for r_idx, row in df_excel_base.iterrows():
+                            excel_r = r_idx + 1  # 0-indexed행 + 1 (엑셀 2번째 줄부터 시작)
+                            
+                            ws.write(excel_r, 0, row['번호'], fmt_center)
+                            ws.write(excel_r, 1, row['신고번호'], fmt_center)
+                            ws.write(excel_r, 2, row['납부(고지)번호'], fmt_center)
+                            ws.write(excel_r, 3, row['수입부가세 (고지금액)'], fmt_num)
+                            ws.write(excel_r, 4, row['신고일자'], fmt_center)
+                            ws.write(excel_r, 5, row['④ B/L번호 (HBL)'], fmt_center)
+                            ws.write(excel_r, 6, row['③⑦ 결제금액 (USD)'], fmt_usd)
+                            ws.write(excel_r, 7, row['인도조건'], fmt_center)
+                            ws.write(excel_r, 8, row['환율'], fmt_fx)
+                            ws.write(excel_r, 9, row['⑤⑦ 운임비 (KRW)'], fmt_num)
+                            ws.write(excel_r, 10, row['⑤⑧ 보험증권 (KRW)'], fmt_num)
+                            
+                            # 세관별 셀 배경색 분기 적용
+                            sewan_val = str(row['세관'])
+                            if '안산' in sewan_val:
+                                ws.write(excel_r, 11, sewan_val, fmt_ansan)
+                            elif '안양' in sewan_val:
+                                ws.write(excel_r, 11, sewan_val, fmt_anyang)
+                            elif '부산' in sewan_val:
+                                ws.write(excel_r, 11, sewan_val, fmt_busan)
+                            else:
+                                ws.write(excel_r, 11, sewan_val, fmt_sewan_default)
+                                
+                            ws.write(excel_r, 12, row['비고'], fmt_center)
+                            
+                            # N, O, P 열 수식 작성 (테두리 실금 포함)
+                            f_row = excel_r + 1
+                            ws.write_formula(excel_r, 13, f'=(G{f_row}*I{f_row})+J{f_row}+K{f_row}', fmt_num)
+                            ws.write_formula(excel_r, 14, f'=ROUNDDOWN(N{f_row}*0.1, -1)', fmt_num)
+                            ws.write_formula(excel_r, 15, f'=IF(D{f_row}=O{f_row}, "✔ 완벽 일치", "❌ 금액 불일치")', fmt_center)
                         
                         ws.conditional_format(f'P2:P{last_row_idx}', {
                             'type': 'cell',
@@ -451,7 +507,7 @@ with tab1:
                         workbook.close()
                         excel_data = output_excel.getvalue()
                         
-                        st.success("🎉 수입신고필증 운임 오차 및 끝자리 알파벳('u') 누락이 완벽히 방어되어 모든 검증 결과가 정상 복구되었습니다!")
+                        st.success("🎉 세관별 자동 정렬, 파스텔 컬러 구분, 모든 셀 테두리 실금 적용이 완료되었습니다!")
                         st.download_button(
                             label="📥 최종 고도화 정산 마스터 대장 다운로드 (.xlsx)",
                             data=excel_data,
@@ -459,7 +515,14 @@ with tab1:
                             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                             use_container_width=True
                         )
-                        st.dataframe(df_final, use_container_width=True)
+                        
+                        # 웹 화면 미리보기에서도 세관별 색상 적용하여 출력
+                        try:
+                            st.dataframe(df_final.style.map(color_sewan_style, subset=['세관']), use_container_width=True)
+                        except AttributeError:
+                            st.dataframe(df_final.style.applymap(color_sewan_style, subset=['세관']), use_container_width=True)
+                        except Exception:
+                            st.dataframe(df_final, use_container_width=True)
                         
                     except Exception as e:
                         st.error(f"❌ 가독성 양식 업그레이드 중 오류가 발생했습니다: {e}")
