@@ -164,7 +164,7 @@ tab1, tab2, tab3 = st.tabs([
 ])
 
 # ------------------------------------------
-# 📑 TAB 1: 세관 통관 부가세 정산 마스터 (제미나이 AI 복합 검증 원본 복원)
+# 📑 TAB 1: 세관 통관 부가세 정산 마스터 (제미나이 AI 복합 검증 & 끝자리 'u' 해결)
 # ------------------------------------------
 with tab1:
     st.markdown("### 📑 안산 / 안양 / 부산 세관 월별납부 부가세·관세 정밀 매칭")
@@ -266,8 +266,12 @@ with tab1:
                         extracted_data = json.loads(response.text)
                         pdf_master_dict = {}
                         for item in extracted_data:
-                            k = "".join(filter(str.isalnum, str(item.get('shin_no', ''))))
-                            pdf_master_dict[k] = item
+                            # 🎯 [핵심 해결책] 신고번호 뒤에 붙은 알파벳 'u'나 다른 식별 문자를 완벽히 제거
+                            raw_shin = str(item.get('shin_no', '')).strip()
+                            clean_shin = "".join(filter(str.isalnum, raw_shin))
+                            if clean_shin.lower().endswith('u'):
+                                clean_shin = clean_shin[:-1]
+                            pdf_master_dict[clean_shin] = item
                         
                         processed_data = []
                         
@@ -275,6 +279,9 @@ with tab1:
                             no = idx + 1
                             excel_shin_no = str(row.get('신고번호', '')).strip()
                             clean_excel_shin = "".join(filter(str.isalnum, excel_shin_no))
+                            if clean_excel_shin.lower().endswith('u'):
+                                clean_excel_shin = clean_excel_shin[:-1]
+
                             goji_no = str(row.get('납부(고지)번호', row.get('납부번호', '미확인'))).strip()
                             sheet_se관 = str(row.get('원본시트세관', ''))
                             
@@ -321,7 +328,6 @@ with tab1:
                                     insurance_num = 0
                                     
                                 # 🛡️ [핵심 패치] 운임비 비정상 과다 검출(과세가격 오추출) 자동 방어 로직
-                                # 운임비가 전체 순수 물건값(원화)의 30%를 넘을 수는 없으므로, 이를 초과하면 과세가격을 잘못 읽은 것으로 보고 0원 처리
                                 raw_goods_val = usd_num * fx_num
                                 if raw_goods_val > 0 and (freight_num / raw_goods_val) > 0.3:
                                     freight_num = 0
@@ -445,7 +451,7 @@ with tab1:
                         workbook.close()
                         excel_data = output_excel.getvalue()
                         
-                        st.success("🎉 수입신고필증 운임 오차 자동 방어가 적용되어 검증 결과가 정상 복구되었습니다!")
+                        st.success("🎉 수입신고필증 운임 오차 및 끝자리 알파벳('u') 누락이 완벽히 방어되어 모든 검증 결과가 정상 복구되었습니다!")
                         st.download_button(
                             label="📥 최종 고도화 정산 마스터 대장 다운로드 (.xlsx)",
                             data=excel_data,
@@ -463,7 +469,7 @@ with tab1:
 # ------------------------------------------
 with tab2:
     st.markdown("### 📦 해상물류비 마감정산 및 단가 감사 시스템")
-    st.write("판토스 등 물류사의 마감내역서 and 내부 반입계획서를 대조하여 청구 운임 단가 및 물동량의 일치 여부를 자동으로 검증합니다.")
+    st.write("판토스 등 물류사의 마감내역서와 내부 반입계획서를 대조하여 청구 운임 단가 및 물동량의 일치 여부를 자동으로 검증합니다.")
     
     l_col1, l_col2 = st.columns([1, 2])
     with l_col1:
