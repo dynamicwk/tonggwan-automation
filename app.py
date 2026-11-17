@@ -170,7 +170,7 @@ tab1, tab2, tab3 = st.tabs([
 ])
 
 # ------------------------------------------
-# 📑 TAB 1: 세관 통관 부가세 정산 마스터
+# 📑 TAB 1: 세관 통관 부가세 정산 마스터 
 # ------------------------------------------
 with tab1:
     st.markdown("### 📑 전국 세관 월별납부 부가세·관세 정밀 매칭 (1:1 마이크로 연산)")
@@ -182,13 +182,13 @@ with tab1:
         notice_file = st.file_uploader(
             "관세청 '월별납부 개별고지목록' (Excel)", 
             type=["xlsx", "xls"], 
-            key="notice_final_fixed_v27"
+            key="notice_final_fixed_v28"
         )
         pdf_files = st.file_uploader(
             "수입신고필증(면장) 파일 (PDF 여러 장 선택)", 
             type=["pdf"], 
             accept_multiple_files=True, 
-            key="declaration_final_fixed_v27"
+            key="declaration_final_fixed_v28"
         )
         st.markdown("---")
         start_btn = st.button("🚀 최종 마스터 대장 산출하기", use_container_width=True, type="primary", key="btn_customs")
@@ -253,6 +253,8 @@ with tab1:
                         
                         max_retries = 3
                         response = None
+                        
+                        # 🎯 503 방어 재시도 루프
                         for attempt in range(max_retries):
                             try:
                                 response = client.models.generate_content(
@@ -264,7 +266,7 @@ with tab1:
                                 if "503" in str(api_e) or "429" in str(api_e):
                                     if attempt < max_retries - 1:
                                         wait_time = 3 * (attempt + 1)
-                                        ui_status.warning(f"⚠️ 구글 AI 서버 혼잡(503). {wait_time}초 숨 고르기 후 재시도합니다... ({attempt+1}/{max_retries})")
+                                        ui_status.warning(f"⚠️ 구글 AI 서버 혼잡(503). {wait_time}초 대기 후 재시도... ({attempt+1}/{max_retries})")
                                         time.sleep(wait_time)
                                     else:
                                         st.error(f"❌ 서버 트래픽이 너무 높습니다. 잠시 후 처음부터 다시 시도해주세요. ({api_e})")
@@ -272,6 +274,7 @@ with tab1:
                                 else:
                                     raise api_e
                         
+                        # 🎯 변수 꼬임 방지 딕셔너리 안전 업데이트
                         if response:
                             try:
                                 clean_json_str = response.text.strip()
@@ -296,10 +299,15 @@ with tab1:
                                     try: new_ins = int(float(str(item.get('insurance', 0)).replace(",", "")))
                                     except: new_ins = 0
 
-                                    item['usd_amount'] = new_usd
-                                    item['freight'] = new_freight
-                                    item['insurance'] = new_ins
-                                    pdf_master_dict[clean_shin] = item
+                                    pdf_master_dict[clean_shin] = {
+                                        'shin_date': str(item.get('shin_date', '')),
+                                        'bl_no': str(item.get('bl_no', '')),
+                                        'incoterms': str(item.get('incoterms', 'FCA')),
+                                        'usd_amount': new_usd,
+                                        'fx_rate': str(item.get('fx_rate', '1')),
+                                        'freight': new_freight,
+                                        'insurance': new_ins
+                                    }
                             except Exception as parse_e:
                                 print(f"JSON Parsing Error on {pdf_f.name}: {parse_e}")
                                 pass
@@ -323,22 +331,30 @@ with tab1:
                         try: actual_vat_amount = int(float(str(row.get('실제부가세', 0)).replace(",", "")))
                         except: actual_vat_amount = 0
                             
-                        shin_date, bl_no = "", ""
+                        # 초기값 (문자열 빈칸으로 세팅하여 엑셀에 0이 찍히지 않도록 방어)
+                        shin_date = ""
+                        bl_no = ""
                         se관_name = sheet_se관 + "세관"
                         note = "서류 누락"
+                        chk_result = "서류 누락"
                         
-                        usd_num, fx_num, freight_num, insurance_num = 0.0, 1.0, 0, 0
-                        incoterms_type = "FCA"
+                        usd_num = 0.0
+                        fx_num = 1.0
+                        freight_num = 0
+                        insurance_num = 0
+                        incoterms_type = ""
+                        calc_gwase = 0
+                        calc_vat_val = 0
                         
                         if clean_excel_shin in pdf_master_dict:
                             ai_data = pdf_master_dict[clean_excel_shin]
-                            shin_date = str(ai_data.get('shin_date', ''))
-                            bl_no = str(ai_data.get('bl_no', ''))
-                            incoterms_type = str(ai_data.get('incoterms', 'FCA')).upper()
+                            shin_date = ai_data.get('shin_date', '')
+                            bl_no = ai_data.get('bl_no', '')
+                            incoterms_type = ai_data.get('incoterms', '').upper()
                             
                             usd_num = ai_data.get('usd_amount', 0.0)
                             
-                            try: fx_num = float(str(ai_data.get('fx_rate', '1')).replace(",", ""))
+                            try: fx_num = float(ai_data.get('fx_rate', '1').replace(",", ""))
                             except: fx_num = 1.0
                             
                             freight_num = ai_data.get('freight', 0)
@@ -355,14 +371,16 @@ with tab1:
                                 usd_num = 137048.18
                                 
                             note = "정상 매칭"
+                            
+                            calc_gwase = int((usd_num * fx_num) + freight_num + insurance_num)
+                            calc_vat_val = int((calc_gwase * 0.1) // 10 * 10)
+                            
+                            if actual_vat_amount == calc_vat_val:
+                                chk_result = "✔ 완벽 일치"
+                            else:
+                                chk_result = "❌ 금액 불일치"
                         
-                        calc_gwase = (usd_num * fx_num) + freight_num + insurance_num
-                        calc_vat_val = int((calc_gwase * 0.1) // 10 * 10)
-                        
-                        if actual_vat_amount == calc_vat_val and note == "정상 매칭": chk_result = "✔ 완벽 일치"
-                        elif note == "서류 누락": chk_result = "서류 누락"
-                        else: chk_result = "❌ 금액 불일치"
-                        
+                        # 문자열 공백은 None으로 두지 않고 명확한 빈 텍스트로 처리
                         processed_data.append({
                             "번호": 0,  
                             "신고번호": excel_shin_no,
@@ -370,15 +388,15 @@ with tab1:
                             "수입부가세 (고지금액)": actual_vat_amount,
                             "신고일자": shin_date,
                             "④ B/L번호 (HBL)": bl_no,
-                            "③⑦ 결제금액 (USD)": usd_num,
+                            "③⑦ 결제금액 (USD)": usd_num if note == "정상 매칭" else "",
                             "인도조건": incoterms_type,
-                            "환율": fx_num,
-                            "⑤⑦ 운임비 (KRW)": freight_num,
-                            "⑤⑧ 보험증권 (KRW)": insurance_num,
+                            "환율": fx_num if note == "정상 매칭" else "",
+                            "⑤⑦ 운임비 (KRW)": freight_num if note == "정상 매칭" else "",
+                            "⑤⑧ 보험증권 (KRW)": insurance_num if note == "정상 매칭" else "",
                             "세관": se관_name,
                             "비고": note,
-                            "과세가격(원화산출식)": int(calc_gwase),
-                            "수식검증 부가세(원단위 버림)": calc_vat_val,
+                            "과세가격(원화산출식)": calc_gwase if note == "정상 매칭" else "",
+                            "수식검증 부가세(원단위 버림)": calc_vat_val if note == "정상 매칭" else "",
                             "고지액 검증 결과": chk_result
                         })
                     
@@ -427,7 +445,6 @@ with tab1:
                     
                     last_row_idx = len(df_final) + 1
                     
-                    # 🎯 [줄바꿈 에러 방지 패치] 수식과 포맷 작성을 반복문으로 안전하게 압축
                     sewan_list = [
                         ('안산세관', fmt_ansan),
                         ('안양세관', fmt_anyang),
@@ -470,11 +487,28 @@ with tab1:
                         ws.write(excel_r, 3, row['수입부가세 (고지금액)'], fmt_num)
                         ws.write(excel_r, 4, row['신고일자'], fmt_center)
                         ws.write(excel_r, 5, row['④ B/L번호 (HBL)'], fmt_center)
-                        ws.write(excel_r, 6, row['③⑦ 결제금액 (USD)'], fmt_usd)
+                        
+                        if str(row['③⑦ 결제금액 (USD)']).strip() == "":
+                            ws.write_string(excel_r, 6, "", fmt_center)
+                        else:
+                            ws.write_number(excel_r, 6, float(row['③⑦ 결제금액 (USD)']), fmt_usd)
+                            
                         ws.write(excel_r, 7, row['인도조건'], fmt_center)
-                        ws.write(excel_r, 8, row['환율'], fmt_fx)
-                        ws.write(excel_r, 9, row['⑤⑦ 운임비 (KRW)'], fmt_num)
-                        ws.write(excel_r, 10, row['⑤⑧ 보험증권 (KRW)'], fmt_num)
+                        
+                        if str(row['환율']).strip() == "":
+                            ws.write_string(excel_r, 8, "", fmt_center)
+                        else:
+                            ws.write_number(excel_r, 8, float(row['환율']), fmt_fx)
+                            
+                        if str(row['⑤⑦ 운임비 (KRW)']).strip() == "":
+                            ws.write_string(excel_r, 9, "", fmt_center)
+                        else:
+                            ws.write_number(excel_r, 9, float(row['⑤⑦ 운임비 (KRW)']), fmt_num)
+                            
+                        if str(row['⑤⑧ 보험증권 (KRW)']).strip() == "":
+                            ws.write_string(excel_r, 10, "", fmt_center)
+                        else:
+                            ws.write_number(excel_r, 10, float(row['⑤⑧ 보험증권 (KRW)']), fmt_num)
                         
                         sewan_val = str(row['세관'])
                         if '안산' in sewan_val: ws.write(excel_r, 11, sewan_val, fmt_ansan)
@@ -486,16 +520,20 @@ with tab1:
                             
                         ws.write(excel_r, 12, row['비고'], fmt_center)
                         
-                        f_row = excel_r + 1
-                        
-                        # 🎯 [줄바꿈 에러 방지 패치] 변수 분리 작성
-                        f_gwase = f'=(G{f_row}*I{f_row})+J{f_row}+K{f_row}'
-                        f_vat = f'=ROUNDDOWN(N{f_row}*0.1, -1)'
-                        f_chk = f'=IF(D{f_row}=O{f_row}, "✔ 완벽 일치", "❌ 금액 불일치")'
-                        
-                        ws.write_formula(excel_r, 13, f_gwase, fmt_num)
-                        ws.write_formula(excel_r, 14, f_vat, fmt_num)
-                        ws.write_formula(excel_r, 15, f_chk, fmt_center)
+                        # 수식 작성 (비고가 '정상 매칭'일때만 엑셀 수식 작성)
+                        if row['비고'] == "정상 매칭":
+                            f_row = excel_r + 1
+                            f_gwase = f'=(G{f_row}*I{f_row})+J{f_row}+K{f_row}'
+                            f_vat = f'=ROUNDDOWN(N{f_row}*0.1, -1)'
+                            f_chk = f'=IF(D{f_row}=O{f_row}, "✔ 완벽 일치", "❌ 금액 불일치")'
+                            
+                            ws.write_formula(excel_r, 13, f_gwase, fmt_num)
+                            ws.write_formula(excel_r, 14, f_vat, fmt_num)
+                            ws.write_formula(excel_r, 15, f_chk, fmt_center)
+                        else:
+                            ws.write(excel_r, 13, "", fmt_center)
+                            ws.write(excel_r, 14, "", fmt_center)
+                            ws.write(excel_r, 15, "서류 누락", fmt_center)
                     
                     ws.conditional_format(f'P2:P{last_row_idx}', {
                         'type': 'cell',
