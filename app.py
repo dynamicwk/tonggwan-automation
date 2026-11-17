@@ -647,4 +647,504 @@ with tab1:
                     ws.set_column('H:I', 12)
                     ws.set_column('J:K', 16)
                     ws.set_column('L:M', 14)
-                    ws
+                    ws.set_column('N:P', 24)
+                    
+                    extra_h = [
+                        '과세가격(원화산출식)', 
+                        '수식검증 부가세(원단위 버림)', 
+                        '고지액 검증 결과'
+                    ]
+                    all_headers = list(df_excel_base.columns) + extra_h
+                    for c_idx, h_title in enumerate(all_headers):
+                        ws.write(0, c_idx, h_title, fmt_header)
+                    
+                    for r_idx, row in df_excel_base.iterrows():
+                        excel_r = r_idx + 1
+                        
+                        ws.write(excel_r, 0, row['번호'], fmt_center)
+                        ws.write(excel_r, 1, row['신고번호'], fmt_center)
+                        ws.write(excel_r, 2, row['납부(고지)번호'], fmt_center)
+                        ws.write(excel_r, 3, row['수입부가세 (고지금액)'], fmt_num)
+                        ws.write(excel_r, 4, row['신고일자'], fmt_center)
+                        ws.write(excel_r, 5, row['④ B/L번호 (HBL)'], fmt_center)
+                        
+                        v_usd = str(row['③⑦ 결제금액 (USD)']).strip()
+                        if v_usd == "":
+                            ws.write_string(excel_r, 6, "", fmt_center)
+                        else:
+                            ws.write_number(excel_r, 6, float(v_usd), fmt_usd)
+                            
+                        ws.write(excel_r, 7, row['인도조건'], fmt_center)
+                        
+                        v_fx = str(row['환율']).strip()
+                        if v_fx == "":
+                            ws.write_string(excel_r, 8, "", fmt_center)
+                        else:
+                            ws.write_number(excel_r, 8, float(v_fx), fmt_fx)
+                            
+                        v_frt = str(row['⑤⑦ 운임비 (KRW)']).strip()
+                        if v_frt == "":
+                            ws.write_string(excel_r, 9, "", fmt_center)
+                        else:
+                            ws.write_number(excel_r, 9, float(v_frt), fmt_num)
+                            
+                        v_ins = str(row['⑤⑧ 보험증권 (KRW)']).strip()
+                        if v_ins == "":
+                            ws.write_string(excel_r, 10, "", fmt_center)
+                        else:
+                            ws.write_number(excel_r, 10, float(v_ins), fmt_num)
+                        
+                        sewan_val = str(row['세관'])
+                        if '안산' in sewan_val:
+                            ws.write(excel_r, 11, sewan_val, fmt_ansan)
+                        elif '안양' in sewan_val:
+                            ws.write(excel_r, 11, sewan_val, fmt_anyang)
+                        elif '평택' in sewan_val:
+                            ws.write(excel_r, 11, sewan_val, fmt_pyeongtaek)
+                        elif '인천' in sewan_val:
+                            ws.write(excel_r, 11, sewan_val, fmt_incheon)
+                        elif '부산' in sewan_val:
+                            ws.write(excel_r, 11, sewan_val, fmt_busan)
+                        else:
+                            ws.write(excel_r, 11, sewan_val, fmt_sewan_default)
+                            
+                        ws.write(excel_r, 12, row['비고'], fmt_center)
+                        
+                        if row['비고'] == "정상 매칭":
+                            f_row = excel_r + 1
+                            f_gwase = f'=(G{f_row}*I{f_row})+J{f_row}+K{f_row}'
+                            f_vat = f'=ROUNDDOWN(N{f_row}*0.1, -1)'
+                            f_chk = f'=IF(D{f_row}=O{f_row}, "✔ 완벽 일치", "❌ 금액 불일치")'
+                            
+                            ws.write_formula(excel_r, 13, f_gwase, fmt_num)
+                            ws.write_formula(excel_r, 14, f_vat, fmt_num)
+                            ws.write_formula(excel_r, 15, f_chk, fmt_center)
+                        else:
+                            ws.write_string(excel_r, 13, "", fmt_center)
+                            ws.write_string(excel_r, 14, "", fmt_center)
+                            ws.write_string(excel_r, 15, "서류 누락", fmt_center)
+                    
+                    p_rng = f'P2:P{last_row_idx}'
+                    ws.conditional_format(p_rng, {
+                        'type': 'cell',
+                        'criteria': 'equal to',
+                        'value': '"✔ 완벽 일치"',
+                        'format': blue_bold_center
+                    })
+                    ws.conditional_format(p_rng, {
+                        'type': 'cell',
+                        'criteria': 'equal to',
+                        'value': '"❌ 금액 불일치"',
+                        'format': red_bold_center
+                    })
+                    ws.conditional_format(p_rng, {
+                        'type': 'cell',
+                        'criteria': 'equal to',
+                        'value': '"서류 누락"',
+                        'format': red_bold_center
+                    })
+                    
+                    workbook.close()
+                    excel_data = output_excel.getvalue()
+                    
+                    st.download_button(
+                        label="📥 4대 세관 정산 마스터 대장 다운로드 (.xlsx)",
+                        data=excel_data,
+                        file_name="전체세관_통관월납_정산대장_수식포함.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        use_container_width=True
+                    )
+                    
+                    try:
+                        styled_df = df_final.style.map(
+                            color_sewan_style, subset=['세관']
+                        )
+                        st.dataframe(styled_df, use_container_width=True)
+                    except Exception:
+                        st.dataframe(df_final, use_container_width=True)
+                    
+                except Exception as e:
+                    st.error(f"❌ 처리 중 오류가 발생했습니다: {e}")
+
+# ------------------------------------------
+# 📦 TAB 2: 해상물류비 마감정산 (공장입고)
+# ------------------------------------------
+with tab2:
+    st.markdown("### 📦 해상물류비 마감정산 및 단가 감사 시스템")
+    st.write("물류사 마감내역서와 반입계획서를 대조하여 단가 및 물동량을 검증합니다.")
+    
+    l_col1, l_col2 = st.columns([1, 2])
+    with l_col1:
+        st.markdown("#### 📥 1. 물류 청구서 vs 계획서 업로드")
+        pantos_file = st.file_uploader(
+            "📋 판토스 마감내역서 (Excel)", 
+            type=["xlsx", "xls"], 
+            key="pantos_up"
+        )
+        plan_file = st.file_uploader(
+            "📋 물류 반입계획서 (Excel)", 
+            type=["xlsx", "xls"], 
+            key="plan_up"
+        )
+        st.markdown("---")
+        logistics_btn = st.button(
+            "🚀 물류비 감사 대장 생성", 
+            use_container_width=True, 
+            type="primary", 
+            key="btn_log"
+        )
+        
+    with l_col2:
+        st.markdown("#### 📋 2. 물류비 감사 결과 프리뷰")
+        if logistics_btn:
+            if not pantos_file or not plan_file:
+                st.error("❌ 두 엑셀 파일을 모두 업로드해 주세요.")
+            else:
+                with st.spinner("🤖 물류 청구 내역 대조 연산 중..."):
+                    try:
+                        df_p = pd.read_excel(pantos_file)
+                        df_pl = pd.read_excel(plan_file)
+                        
+                        df_p.columns = make_unique_cols(df_p.columns)
+                        df_pl.columns = make_unique_cols(df_pl.columns)
+                        
+                        df_p_c = df_p.dropna(how='all').reset_index(drop=True)
+                        df_pl_c = df_pl.dropna(how='all').reset_index(drop=True)
+                        
+                        k_words = ["LOT", "B/L", "오더"]
+                        lot_p = next(
+                            (c for c in df_p_c.columns 
+                             if any(k in str(c).upper() for k in k_words)), 
+                            df_p_c.columns[0]
+                        )
+                        lot_pl = next(
+                            (c for c in df_pl_c.columns 
+                             if any(k in str(c).upper() for k in k_words)), 
+                            df_pl_c.columns[0]
+                        )
+                        
+                        df_p_c["매칭키"] = df_p_c[lot_p].astype(str).str.strip().str.upper()
+                        df_pl_c["매칭키"] = df_pl_c[lot_pl].astype(str).str.strip().str.upper()
+                        
+                        df_audit = pd.merge(
+                            df_p_c, df_pl_c, 
+                            on="매칭키", 
+                            how="outer", 
+                            suffixes=("_청구내역", "_반입계획")
+                        )
+                        df_audit.drop(columns=["매칭키"], inplace=True, errors="ignore")
+                        
+                        output_log = io.BytesIO()
+                        with pd.ExcelWriter(output_log, engine='xlsxwriter') as writer:
+                            df_audit.to_excel(
+                                writer, sheet_name="해상물류비감사대장", index=False
+                            )
+                            wb_l = writer.book
+                            ws_l = writer.sheets["해상물류비감사대장"]
+                            fmt_h_l = wb_l.add_format({
+                                'bold': True, 
+                                'bg_color': '#E2EFDA', 
+                                'border': 1, 
+                                'align': 'center'
+                            })
+                            for c_n, val in enumerate(df_audit.columns.values):
+                                ws_l.write(0, c_n, val, fmt_h_l)
+                                ws_l.set_column(c_n, c_n, max(len(str(val)) + 4, 14))
+                                
+                        st.success("🎉 감사 대조가 완료되었습니다!")
+                        f_name_l = f"해상물류비_감사대장_{datetime.now().strftime('%m%d')}.xlsx"
+                        st.download_button(
+                            label="📥 해상물류비 감사 대장 다운로드 (.xlsx)",
+                            data=output_log.getvalue(),
+                            file_name=f_name_l,
+                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                            use_container_width=True
+                        )
+                        st.dataframe(df_audit, use_container_width=True)
+                    except Exception as e:
+                        st.error(f"❌ 오류 발생: {e}")
+
+# ==========================================
+# 💰 TAB 3: 외상매입금 현황 마스터
+# ==========================================
+with tab3:
+    st.markdown("### 💰 미정산 외상매입금 현황 자동 마감 시스템")
+    st.write("반입계획서 파싱 후 회계일자별 매매기준율을 실시간 수집하여 정산합니다.")
+    
+    m_col1, m_col2 = st.columns([1, 2])
+    with m_col1:
+        st.markdown("#### 📥 1. 마감 기본자료 업로드")
+        months_options = [f"2026년 {m}월" for m in range(12, 0, -1)]
+        target_month = st.selectbox("마감 대상월 선택", months_options)
+        match_m = re.search(r"(\d+)월", target_month)
+        sel_m_num = int(match_m.group(1)) if match_m else 6
+        
+        uploaded_ap = st.file_uploader(
+            "📋 반입계획서 파일 업로드 (Excel)", 
+            type=["xlsx"], 
+            key="ap_uploader"
+        )
+        st.markdown("---")
+        calc_ap_btn = st.button(
+            "🚀 외상매입금 마감 대장 생성하기", 
+            use_container_width=True, 
+            type="primary"
+        )
+        
+    with m_col2:
+        st.markdown("#### 📋 2. 외상매입금 대장 산출 프리뷰")
+        if calc_ap_btn:
+            if not uploaded_ap:
+                st.error("❌ 반입계획서 엑셀 파일을 업로드해 주세요.")
+            else:
+                with st.spinner("🤖 실시간 환율 수집 및 집계 테이블 구성 중..."):
+                    try:
+                        xl_ap = pd.ExcelFile(uploaded_ap)
+                        s_lower = {
+                            s.lower().replace(" ", ""): s 
+                            for s in xl_ap.sheet_names
+                        }
+                        processed_list = []
+                        
+                        # ① NDP 시트 처리
+                        ndp_k = next((s for s in s_lower if "ndp" in s), None)
+                        if ndp_k:
+                            df_ndp = pd.read_excel(
+                                xl_ap, sheet_name=s_lower[ndp_k], header=None
+                            )
+                            start_p = False
+                            c_lot, c_pname, c_pick = 1, 2, 6
+                            
+                            for idx, row in df_ndp.iterrows():
+                                r_strs = [str(v).strip() for v in row.values]
+                                if any("LOT" in v.upper() or "오더" in v for v in r_strs):
+                                    start_p = True
+                                    for r_i, val in enumerate(r_strs):
+                                        v_up = val.upper()
+                                        if "LOT" in v_up or "오더" in v_up:
+                                            c_lot = r_i
+                                        if "품명" in val or "규격" in val:
+                                            c_pname = r_i
+                                        d_keys = ["픽업", "타코마", "인계", "일자", "DATE", "ETD", "ETA"]
+                                        if any(k in v_up for k in d_keys):
+                                            c_pick = r_i
+                                    continue
+                                
+                                if start_p:
+                                    l_val = str(row[c_lot]).strip() if pd.notna(row[c_lot]) else ""
+                                    if l_val in ("", "nan", "None") or "LOT" in l_val.upper():
+                                        continue
+                                    r_pn = str(row[c_pname]).strip() if pd.notna(row[c_pname]) else "200ml"
+                                    p_name = auto_define_pname(l_val, r_pn)
+                                    dt_obj = parse_flexible_month(row[c_pick], sel_m_num)
+                                    
+                                    if dt_obj:
+                                        acc_d = dt_obj.strftime("%Y-%m-%d")
+                                        rl_v = float(str(row[9]).replace(",", "")) if pd.notna(row[9]) else 0.0
+                                        kg_v = float(str(row[10]).replace(",", "")) if pd.notna(row[10]) else 0.0
+                                        sq_v = float(str(row[11]).replace(",", "")) if pd.notna(row[11]) else 0.0
+                                        am_v = float(str(row[12]).replace(",", "")) if pd.notna(row[12]) else 0.0
+                                        fx_r = get_realtime_exchange_rate(acc_d)
+                                        processed_list.append({
+                                            "품명": p_name, "LOT No.": l_val, "회계일자": acc_d,
+                                            "R/L": rl_v, "중량": kg_v, "면적": sq_v, 
+                                            "Amount($)": am_v, "환율": fx_r, 
+                                            "원화금액": int(am_v * fx_r)
+                                        })
+                        
+                        # ② ENSO 시트 처리
+                        enso_k = next((s for s in s_lower if "enso" in s), None)
+                        if enso_k:
+                            df_enso = pd.read_excel(
+                                xl_ap, sheet_name=s_lower[enso_k], header=None
+                            )
+                            start_p = False
+                            c_lot, c_pname, c_arr = 1, 2, 4
+                            
+                            for idx, row in df_enso.iterrows():
+                                r_strs = [str(v).strip() for v in row.values]
+                                if any("LOT" in v.upper() or "오더" in v for v in r_strs):
+                                    start_p = True
+                                    for r_i, val in enumerate(r_strs):
+                                        v_up = val.upper()
+                                        if "LOT" in v_up or "오더" in v_up:
+                                            c_lot = r_i
+                                        if "품명" in val or "규격" in val:
+                                            c_pname = r_i
+                                        d_keys = ["입항", "도착", "일자", "DATE", "ETA"]
+                                        if any(k in v_up for k in d_keys):
+                                            c_arr = r_i
+                                    continue
+                                
+                                if start_p:
+                                    l_val = str(row[c_lot]).strip() if pd.notna(row[c_lot]) else ""
+                                    if l_val in ("", "nan", "None") or "LOT" in l_val.upper():
+                                        continue
+                                    r_pn = str(row[c_pname]).strip() if pd.notna(row[c_pname]) else "200ml"
+                                    p_name = auto_define_pname(l_val, r_pn)
+                                    dt_obj = parse_flexible_month(row[c_arr], sel_m_num)
+                                    
+                                    if dt_obj:
+                                        acc_d = dt_obj.strftime("%Y-%m-%d")
+                                        rl_v = float(str(row[7]).replace(",", "")) if pd.notna(row[7]) else 0.0
+                                        kg_v = float(str(row[8]).replace(",", "")) if pd.notna(row[8]) else 0.0
+                                        sq_v = float(str(row[9]).replace(",", "")) if pd.notna(row[9]) else 0.0
+                                        am_v = float(str(row[10]).replace(",", "")) if pd.notna(row[10]) else 0.0
+                                        fx_r = get_realtime_exchange_rate(acc_d)
+                                        processed_list.append({
+                                            "품명": p_name, "LOT No.": l_val, "회계일자": acc_d,
+                                            "R/L": rl_v, "중량": kg_v, "면적": sq_v, 
+                                            "Amount($)": am_v, "환율": fx_r, 
+                                            "원화금액": int(am_v * fx_r)
+                                        })
+                        
+                        if not processed_list:
+                            st.warning("⚠️ 선택하신 월에 매칭되는 데이터가 없습니다.")
+                        else:
+                            df_prev = pd.DataFrame(processed_list)
+                            df_prev = df_prev.sort_values(by="품명").reset_index(drop=True)
+                            
+                            ap_excel = io.BytesIO()
+                            with pd.ExcelWriter(ap_excel, engine='xlsxwriter') as writer:
+                                wb_a = writer.book
+                                ws_n = target_month.replace("2026년 ", "26년 ")
+                                ws_a = wb_a.add_worksheet(ws_n)
+                                
+                                fmt_t = wb_a.add_format({
+                                    'bold': True, 'font_size': 16
+                                })
+                                fmt_m = wb_a.add_format({
+                                    'font_color': 'red', 'font_size': 10, 'bold': True
+                                })
+                                fmt_th = wb_a.add_format({
+                                    'bold': True, 'bg_color': '#D9E1F2', 
+                                    'border': 1, 'align': 'center'
+                                })
+                                fmt_subth = wb_a.add_format({
+                                    'bg_color': '#F2F2F2', 'border': 1, 
+                                    'align': 'center', 'font_size': 9
+                                })
+                                fmt_c = wb_a.add_format({
+                                    'border': 1, 'align': 'center'
+                                })
+                                fmt_gr = wb_a.add_format({
+                                    'border': 1, 'align': 'center', 
+                                    'font_color': '#006100', 'bold': True
+                                })
+                                fmt_nm = wb_a.add_format({
+                                    'border': 1, 'num_format': '#,##0'
+                                })
+                                fmt_us = wb_a.add_format({
+                                    'border': 1, 'num_format': '#,##0.00'
+                                })
+                                fmt_sub = wb_a.add_format({
+                                    'bg_color': '#FFF2CC', 'bold': True, 
+                                    'border': 1, 'num_format': '#,##0'
+                                })
+                                fmt_sub_u = wb_a.add_format({
+                                    'bg_color': '#FFF2CC', 'bold': True, 
+                                    'border': 1, 'num_format': '#,##0.00'
+                                })
+                                fmt_tot = wb_a.add_format({
+                                    'bg_color': '#FCE4D6', 'bold': True, 
+                                    'border': 1, 'num_format': '#,##0', 
+                                    'align': 'center'
+                                })
+                                fmt_tot_u = wb_a.add_format({
+                                    'bg_color': '#FCE4D6', 'bold': True, 
+                                    'border': 1, 'num_format': '#,##0.00', 
+                                    'align': 'center'
+                                })
+                                fmt_lbl_sub = wb_a.add_format({
+                                    'bg_color': '#FFF2CC', 'bold': True, 
+                                    'align': 'center', 'border': 1
+                                })
+                                fmt_lbl_tot = wb_a.add_format({
+                                    'bg_color': '#FCE4D6', 'bold': True, 
+                                    'align': 'center', 'border': 1
+                                })
+                                
+                                t_str = f"{target_month} 미정산 외상매입금 현황"
+                                ws_a.write(0, 0, t_str, fmt_t)
+                                ws_a.write(3, 1, "** 회계일자 빨강 표시는 타코마 인계일", fmt_m)
+                                
+                                h_ap = [
+                                    "품명", "LOT No.", "회계일자", "R/L", 
+                                    "중량", "면적", "Amount($)", "환율", "원화금액"
+                                ]
+                                for c_i, h in enumerate(h_ap):
+                                    ws_a.write(4, c_i, h, fmt_th)
+                                ws_a.write(5, 4, "kg", fmt_subth)
+                                ws_a.write(5, 5, "SQ", fmt_subth)
+                                
+                                r_idx = 6
+                                for p_name in df_prev["품명"].unique():
+                                    df_g = df_prev[df_prev["품명"] == p_name]
+                                    s_row = r_idx + 1
+                                    
+                                    for i, (_, itm) in enumerate(df_g.iterrows()):
+                                        l_no = str(itm["LOT No."]).strip()
+                                        is_e = l_no.upper().startswith(("E25", "E26"))
+                                        
+                                        ws_a.write(r_idx, 0, itm["품명"] if i == 0 else "", fmt_c)
+                                        ws_a.write(r_idx, 1, l_no, fmt_gr if is_e else fmt_c)
+                                        ws_a.write(r_idx, 2, itm["회계일자"], fmt_c)
+                                        ws_a.write(r_idx, 3, itm["R/L"], fmt_nm)
+                                        ws_a.write(r_idx, 4, itm["중량"], fmt_nm)
+                                        ws_a.write(r_idx, 5, itm["면적"], fmt_nm)
+                                        ws_a.write(r_idx, 6, itm["Amount($)"], fmt_us)
+                                        ws_a.write(r_idx, 7, itm["환율"], fmt_us)
+                                        ws_a.write_formula(
+                                            r_idx, 8, f"=G{r_idx+1}*H{r_idx+1}", fmt_nm
+                                        )
+                                        r_idx += 1
+                                    
+                                    e_row = r_idx
+                                    for _ in range(3):
+                                        for c in range(8):
+                                            ws_a.write(r_idx, c, "", fmt_c)
+                                        ws_a.write(r_idx, 8, 0, fmt_nm)
+                                        r_idx += 1
+                                    r_idx += 1
+                                    
+                                    ws_a.write(r_idx, 0, "", fmt_c)
+                                    ws_a.write(r_idx, 1, "소       계", fmt_lbl_sub)
+                                    ws_a.write(r_idx, 2, len(df_g), fmt_c)
+                                    ws_a.write_formula(r_idx, 3, f"=SUM(D{s_row}:D{e_row})", fmt_sub)
+                                    ws_a.write_formula(r_idx, 4, f"=SUM(E{s_row}:E{e_row})", fmt_sub)
+                                    ws_a.write_formula(r_idx, 5, f"=SUM(F{s_row}:F{e_row})", fmt_sub)
+                                    ws_a.write_formula(r_idx, 6, f"=SUM(G{s_row}:G{e_row})", fmt_sub_u)
+                                    ws_a.write(r_idx, 7, "", fmt_c)
+                                    ws_a.write_formula(r_idx, 8, f"=SUM(I{s_row}:I{e_row})", fmt_sub)
+                                    r_idx += 2
+                                
+                                ws_a.write(r_idx, 0, "", fmt_c)
+                                ws_a.write(r_idx, 1, "총   합   계", fmt_lbl_tot)
+                                
+                                b_rng = f"B7:B{r_idx}"
+                                sub_k = '"소       계"'
+                                ws_a.write_formula(r_idx, 2, f'=SUMIF({b_rng}, {sub_k}, C7:C{r_idx})', fmt_tot)
+                                ws_a.write_formula(r_idx, 3, f'=SUMIF({b_rng}, {sub_k}, D7:D{r_idx})', fmt_tot)
+                                ws_a.write_formula(r_idx, 4, f'=SUMIF({b_rng}, {sub_k}, E7:E{r_idx})', fmt_tot)
+                                ws_a.write_formula(r_idx, 5, f'=SUMIF({b_rng}, {sub_k}, F7:F{r_idx})', fmt_tot)
+                                ws_a.write_formula(r_idx, 6, f'=SUMIF({b_rng}, {sub_k}, G7:G{r_idx})', fmt_tot_u)
+                                ws_a.write(r_idx, 7, "", fmt_c)
+                                ws_a.write_formula(r_idx, 8, f'=SUMIF({b_rng}, {sub_k}, I7:I{r_idx})', fmt_tot)
+                                
+                                ws_a.set_column('A:B', 16)
+                                ws_a.set_column('C:C', 13)
+                                ws_a.set_column('D:F', 11)
+                                ws_a.set_column('G:I', 16)
+                                
+                            st.success(f"🎯 {target_month} 외상매입금 정산 완료!")
+                            f_n_ap = f"외상매입금현황_{target_month.replace(' ', '_')}.xlsx"
+                            st.download_button(
+                                label="📥 외상매입금 마스터 엑셀 다운로드 (.xlsx)",
+                                data=ap_excel.getvalue(),
+                                file_name=f_n_ap,
+                                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                                use_container_width=True
+                            )
+                            st.dataframe(df_prev, use_container_width=True)
+                    except Exception as e:
+                        st.error(f"❌ 오류 발생: {e}")
